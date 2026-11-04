@@ -57,7 +57,7 @@ Follow these steps to take the project from this folder to a public repo with a 
    ```
 2. **Check the first run.** Under **Actions**, trigger **Detection Validation** with **Run workflow** to validate every rule. This first run is the real test of the Docker layer.
 3. **Require the gate.** In **Settings > Rules > Rulesets**, create a ruleset for `main` that requires a pull request and the **Detection gate** status check. Don't require the individual `Validate ...` jobs, because their names change with each rule.
-4. **Protect the pipeline.** Add `.github/CODEOWNERS`, and enable "Require review from Code Owners" in the same ruleset:
+4. **Protect the pipeline once you have collaborators.** GitHub doesn't let you approve your own PR, so turning this on as a solo maintainer would block all of your merges. When someone else can review, add `.github/CODEOWNERS`, and enable "Require review from Code Owners" in the same ruleset:
    ```text
    /.github/        @PranaVVelu
    /scripts/        @PranaVVelu
