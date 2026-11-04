@@ -1,0 +1,26 @@
+title: PowerShell Launched With Short Encoded Flag
+id: 7d1f4a26-8c3b-4e95-a0d7-3b6e92c1f584
+status: experimental
+description: >
+  Detects PowerShell started with an abbreviated -EncodedCommand flag, which
+  attackers often shorten to avoid simple string matches.
+references:
+  - https://attack.mitre.org/techniques/T1059/001/
+author: PranaVVelu
+date: 2026-11-04
+tags:
+  - attack.execution
+  - attack.t1059.001
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection:
+    Image|endswith: '\powershell.exe'
+    CommandLine|contains: ' -e '
+  condition: selection
+falsepositives:
+  - Management tooling that wraps scripts in encoded commands
+level: medium
+# Atomic Red Team test (auto_generated_guid) that CI runs to validate this rule.
+x_atomic_test: a538de64-1c74-46ed-aa60-b995ed302598
