@@ -1,0 +1,11 @@
+# Fires on the test, but " -e" also matches benign -ExecutionPolicy usage.
+title: "Negative control: too broad"
+id: 00000000-0000-4000-8000-000000000002
+logsource: {category: process_creation, product: windows}
+tags: [attack.t1059.001]
+detection:
+  selection:
+    Image|endswith: '\powershell.exe'
+    CommandLine|contains: ' -e'
+  condition: selection
+x_atomic_test: a538de64-1c74-46ed-aa60-b995ed302598

@@ -1,0 +1,11 @@
+# Correct logic, but tagged T1059.003, which is Windows Command Shell, not PowerShell.
+title: "Negative control: wrong technique"
+id: 00000000-0000-4000-8000-000000000003
+logsource: {category: process_creation, product: windows}
+tags: [attack.t1059.003]
+detection:
+  selection:
+    Image|endswith: '\powershell.exe'
+    CommandLine|contains: ' -e '
+  condition: selection
+x_atomic_test: a538de64-1c74-46ed-aa60-b995ed302598

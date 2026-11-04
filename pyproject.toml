@@ -1,0 +1,9 @@
+[project]
+name = "detection-validation-pipeline"
+version = "0.1.0"
+description = "CI/CD pipeline that proves Sigma and KQL rules fire on Atomic Red Team telemetry."
+requires-python = ">=3.9"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "scripts"]

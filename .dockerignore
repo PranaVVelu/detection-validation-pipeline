@@ -1,0 +1,7 @@
+.git
+.github
+.venv
+reports
+tests
+docs
+detections

@@ -1,0 +1,4 @@
+# Tooling for the self-test and lint jobs.
+-r requirements.txt
+pytest==8.4.2
+sigma-cli==1.0.6

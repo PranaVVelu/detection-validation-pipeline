@@ -1,0 +1,2 @@
+# Runtime dependencies of the pipeline (installed in the container).
+PyYAML==6.0.3

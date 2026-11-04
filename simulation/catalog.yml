@@ -1,0 +1,59 @@
+# Telemetry profiles for simulated Atomic Red Team tests.
+#
+# `upstream_command` is copied from the Atomic definition at the commit below.
+# `attack_events` model what a sensor records when the command runs. They are
+# written from the test itself, never from a rule: telemetry shaped to fit the
+# rule under test would prove nothing.
+upstream:
+  repository: https://github.com/redcanaryco/atomic-red-team
+  commit: a8f00488f3be0d6f8a967585848bb3817a590e31
+
+# Everyday activity that a good rule must ignore, grouped by event category.
+benign_baseline:
+  process_creation:
+    # A trap for sloppy matching: " -e" is also a prefix of -ExecutionPolicy.
+    - Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      CommandLine: powershell.exe -ExecutionPolicy RemoteSigned -File C:\Ops\inventory.ps1
+      ParentImage: C:\Windows\System32\svchost.exe
+      ParentCommandLine: C:\Windows\System32\svchost.exe -k netsvcs -p -s Schedule
+    - Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      CommandLine: powershell.exe -NoProfile -Command Get-Service
+      ParentImage: C:\Windows\explorer.exe
+      ParentCommandLine: C:\Windows\explorer.exe
+    - Image: C:\Windows\System32\cmd.exe
+      CommandLine: cmd.exe /c echo backup finished >> C:\Ops\backup.log
+      ParentImage: C:\Windows\System32\svchost.exe
+      ParentCommandLine: C:\Windows\System32\svchost.exe -k netsvcs -p -s Schedule
+    - Image: C:\Windows\System32\notepad.exe
+      CommandLine: notepad.exe C:\Users\atomic\notes.txt
+      ParentImage: C:\Windows\explorer.exe
+      ParentCommandLine: C:\Windows\explorer.exe
+
+tests:
+  a538de64-1c74-46ed-aa60-b995ed302598:
+    technique: T1059.001
+    name: PowerShell Command Execution
+    category: process_creation
+    upstream_command: "powershell.exe -e  #{obfuscated_code}"
+    attack_events:
+      # The executor is command_prompt, so cmd.exe launches PowerShell.
+      - Image: C:\Windows\System32\cmd.exe
+        CommandLine: 'cmd.exe /c powershell.exe -e  JgAgACgAZwBjAG0AIAAoACcAaQBlAHsAMAB9ACcAIAAtAGYAIAAnAHgAJwApACkAIAAoACIAVwByACIAKwAiAGkAdAAiACsAIgBlAC0ASAAiACsAIgBvAHMAdAAgACcASAAiACsAIgBlAGwAIgArACIAbABvACwAIABmAHIAIgArACIAbwBtACAAUAAiACsAIgBvAHcAIgArACIAZQByAFMAIgArACIAaAAiACsAIgBlAGwAbAAhACcAIgApAA=='
+        ParentImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+        ParentCommandLine: powershell.exe -NoProfile
+      - Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+        CommandLine: 'powershell.exe -e  JgAgACgAZwBjAG0AIAAoACcAaQBlAHsAMAB9ACcAIAAtAGYAIAAnAHgAJwApACkAIAAoACIAVwByACIAKwAiAGkAdAAiACsAIgBlAC0ASAAiACsAIgBvAHMAdAAgACcASAAiACsAIgBlAGwAIgArACIAbABvACwAIABmAHIAIgArACIAbwBtACAAUAAiACsAIgBvAHcAIgArACIAZQByAFMAIgArACIAaAAiACsAIgBlAGwAbAAhACcAIgApAA=='
+        ParentImage: C:\Windows\System32\cmd.exe
+        ParentCommandLine: 'cmd.exe /c powershell.exe -e  JgAgACgAZwBjAG0AIAAoACcAaQBlAHsAMAB9ACcAIAAtAGYAIAAnAHgAJwApACkAIAAoACIAVwByACIAKwAiAGkAdAAiACsAIgBlAC0ASAAiACsAIgBvAHMAdAAgACcASAAiACsAIgBlAGwAIgArACIAbABvACwAIABmAHIAIgArACIAbwBtACAAUAAiACsAIgBvAHcAIgArACIAZQByAFMAIgArACIAaAAiACsAIgBlAGwAbAAhACcAIgApAA=='
+
+  d0eb3597-a1b3-4d65-b33b-2cda8d397f20:
+    technique: T1059.003
+    name: Suspicious Execution via Windows Command Shell
+    category: process_creation
+    upstream_command: "%LOCALAPPDATA:~-3,1%md /c echo #{input_message} > #{output_file} & type #{output_file}"
+    attack_events:
+      # The outer shell's command line keeps the unexpanded variable substring.
+      - Image: C:\Windows\System32\cmd.exe
+        CommandLine: 'cmd.exe /c %LOCALAPPDATA:~-3,1%md /c echo Hello, from CMD! > hello.txt & type hello.txt'
+        ParentImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+        ParentCommandLine: powershell.exe -NoProfile

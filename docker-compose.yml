@@ -1,0 +1,56 @@
+# Isolated test range for one validation run.
+#
+#   simulator  no network at all; writes telemetry to ./reports
+#   siem       mock SIEM, reachable only on the internal "sandbox" network
+#   runner     ships telemetry to the SIEM and runs validate_alert.py
+#
+# "sandbox" is internal, so nothing here can reach the internet, and no port is
+# published to the host. The rule under test is untrusted input from a PR.
+
+x-hardening: &hardening
+  build: .
+  image: dvp:local
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 128
+  mem_limit: 256m
+
+x-workspace: &workspace
+  - ./detections:/app/detections:ro
+  - ./reports:/app/reports
+
+services:
+  siem:
+    <<: *hardening
+    command: ["python", "-m", "dvp.siem_server", "--host", "0.0.0.0", "--port", "8080"]
+    environment:
+      # Models ingestion lag, so the validator has to poll as it would in production.
+      SIEM_ALERT_DELAY_SECONDS: "2"
+    networks: [sandbox]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  simulator:
+    <<: *hardening
+    profiles: [tools]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    network_mode: none
+    volumes: *workspace
+
+  runner:
+    <<: *hardening
+    profiles: [tools]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    networks: [sandbox]
+    volumes: *workspace
+    depends_on:
+      siem:
+        condition: service_healthy
+
+networks:
+  sandbox:
+    internal: true

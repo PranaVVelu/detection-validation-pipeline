@@ -1,0 +1,16 @@
+# Shared image for the mock SIEM and the pipeline scripts.
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY src ./src
+COPY scripts ./scripts
+COPY simulation ./simulation
+
+# Rules are mounted at runtime, so the rule under test is never baked into the image.
+USER 1000:1000

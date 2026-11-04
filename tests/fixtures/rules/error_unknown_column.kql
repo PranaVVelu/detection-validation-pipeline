@@ -1,0 +1,6 @@
+// @id: 00000000-0000-4000-8000-000000000008
+// @title: Negative control: unknown column
+// @techniques: T1059.001
+// @atomic_test: a538de64-1c74-46ed-aa60-b995ed302598
+DeviceProcessEvents
+| where ProcessCmdLine contains "-e"

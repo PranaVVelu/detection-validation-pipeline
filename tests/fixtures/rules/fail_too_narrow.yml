@@ -1,0 +1,11 @@
+# Misses the test: real attackers abbreviate the flag, and the atomic uses "-e".
+title: "Negative control: too narrow"
+id: 00000000-0000-4000-8000-000000000001
+logsource: {category: process_creation, product: windows}
+tags: [attack.t1059.001]
+detection:
+  selection:
+    Image|endswith: '\powershell.exe'
+    CommandLine|contains: '-EncodedCommand'
+  condition: selection
+x_atomic_test: a538de64-1c74-46ed-aa60-b995ed302598

@@ -1,0 +1,10 @@
+# The engine must refuse this, not ignore the modifier and report a false verdict.
+title: "Negative control: unsupported modifier"
+id: 00000000-0000-4000-8000-000000000005
+logsource: {category: process_creation, product: windows}
+tags: [attack.t1059.001]
+detection:
+  selection:
+    CommandLine|base64offset|contains: 'Write-Host'
+  condition: selection
+x_atomic_test: a538de64-1c74-46ed-aa60-b995ed302598
