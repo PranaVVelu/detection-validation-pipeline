@@ -21,6 +21,7 @@ class AtomicTest:
     upstream_command: str
     attack_events: List[Dict[str, Any]]
     benign_events: List[Dict[str, Any]]
+    upstream_commit: str
 
 
 def load_atomic_test(guid: str, catalog_path: Path = DEFAULT_CATALOG) -> AtomicTest:
@@ -40,4 +41,5 @@ def load_atomic_test(guid: str, catalog_path: Path = DEFAULT_CATALOG) -> AtomicT
         upstream_command=entry["upstream_command"],
         attack_events=entry["attack_events"],
         benign_events=catalog["benign_baseline"][entry["category"]],
+        upstream_commit=catalog["upstream"]["commit"],
     )

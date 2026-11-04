@@ -1,0 +1,10 @@
+<!--
+  Deliberately minimal Sysmon configuration: log every process creation.
+  Filtering happens in the pipeline, so a tuned-out event can't hide a failure.
+-->
+<Sysmon schemaversion="4.90">
+  <HashAlgorithms>sha256</HashAlgorithms>
+  <EventFiltering>
+    <ProcessCreate onmatch="exclude" />
+  </EventFiltering>
+</Sysmon>
