@@ -160,8 +160,12 @@ def collect_alerts(source: Any, run_id: str, rule_id: str, timeout: float,
 # Evaluation
 # --------------------------------------------------------------------------- #
 
-def _describe_event(event: Dict[str, Any]) -> str:
+def _describe_alert(alert: Dict[str, Any]) -> str:
     """Pick the most useful field, since each event type records different ones."""
+    correlation = alert.get("correlation")
+    if correlation:
+        return f"count of {correlation['count']} for {correlation['group']}"
+    event = alert.get("matched_event", {})
     return event.get("CommandLine") or event.get("ImageLoaded") or \
         f"{event.get('SourceImage')} -> {event.get('TargetImage')} access={event.get('GrantedAccess')}"
 
@@ -186,7 +190,7 @@ def evaluate(rule: Rule, test: ValidationTest, alerts: List[Dict[str, Any]], eve
             "No false positive",
             not false_positives,
             f"{len(false_positives)} alert(s) on {events['benign']} benign event(s)"
-            + "".join(f"\n      matched: {_describe_event(a.get('matched_event', {}))}" for a in false_positives),
+            + "".join(f"\n      matched: {_describe_alert(a)}" for a in false_positives),
         ),
     ]
 

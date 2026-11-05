@@ -16,9 +16,9 @@ from dvp.sysmon import normalize_percent_signs
 PASS, FAIL, ERROR = 0, 1, 2
 REPO_RULES = sorted((REPO_ROOT / "detections").rglob("*.*"))
 FAILING_CONTROLS = ["fail_too_narrow.yml", "fail_too_broad.yml", "fail_wrong_technique.yml", "fail_too_broad.kql",
-                    "fail_game_dll_any_path.yml"]
+                    "fail_game_dll_any_path.yml", "fail_license_counts_retries.yml", "fail_license_counts_reinstalls.yml"]
 ERROR_CONTROLS = ["error_unsupported_modifier.yml", "error_unknown_atomic.yml",
-                  "error_summarize.kql", "error_unknown_column.kql"]
+                  "error_summarize.kql", "error_unknown_column.kql", "error_unsupported_correlation.yml"]
 
 
 def run_offline(rule: Path, tmp_path: Path, run_id: str = "test-run"):
@@ -60,6 +60,8 @@ def test_each_control_fails_for_the_expected_reason(tmp_path):
         "fail_wrong_technique.yml": "Technique mapping",
         "fail_too_broad.kql": "No false positive",
         "fail_game_dll_any_path.yml": "No false positive",
+        "fail_license_counts_retries.yml": "No false positive",
+        "fail_license_counts_reinstalls.yml": "No false positive",
     }
     for name, failing_check in expected.items():
         run_offline(FIXTURES / name, tmp_path)
@@ -134,7 +136,7 @@ def test_catalog_events_contain_the_upstream_atomic_command():
     """Keeps the simulation anchored to the real test, not to what a rule expects."""
     catalog = yaml.safe_load((REPO_ROOT / "simulation/catalog.yml").read_text(encoding="utf-8"))
     for guid, test in catalog["tests"].items():
-        if test.get("kind") == "game":
+        if test.get("kind", "atomic") != "atomic":
             continue
         fixed_prefix = test["upstream_command"].split("#{")[0].strip()
         assert any(fixed_prefix in normalize_percent_signs(event["CommandLine"])

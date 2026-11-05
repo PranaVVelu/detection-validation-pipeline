@@ -1,0 +1,19 @@
+# Counts failures rather than different keys, so a player retrying a typo sets it off.
+title: "Negative control: base rule"
+id: 00000000-0000-4000-8000-000000000010
+name: control_unknown_key
+logsource: {category: license_activation, product: fakequest}
+detection:
+  selection: {event: activation, reason: unknown_key}
+  condition: selection
+---
+title: "Negative control: license failures from one address"
+id: 00000000-0000-4000-8000-000000000011
+tags: [attack.t1110]
+correlation:
+  type: event_count
+  rules: [control_unknown_key]
+  group-by: [client_ip]
+  timespan: 5m
+  condition: {gte: 10}
+x_game_test: license-key-guessing

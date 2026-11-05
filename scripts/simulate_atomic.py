@@ -28,13 +28,17 @@ from dvp.sysmon import EVENT_ID_BY_CATEGORY  # noqa: E402
 
 def _render(template: Dict[str, Any], test: ValidationTest, run_id: str, scenario: str) -> Dict[str, Any]:
     """Combine a catalog event with the envelope fields a real sensor would add."""
-    return {
+    now = datetime.now(timezone.utc).isoformat()
+    envelope: Dict[str, Any] = {"timestamp": now} if test.kind == "license" else {
         "EventID": EVENT_ID_BY_CATEGORY[test.category],
         "Channel": "Microsoft-Windows-Sysmon/Operational",
         "Computer": "WIN-SIMULATED-01",
         "User": "SIMLAB\\atomic",
-        "UtcTime": datetime.now(timezone.utc).isoformat(),
+        "UtcTime": now,
         "ProcessGuid": f"{{{uuid.uuid4()}}}",
+    }
+    return {
+        **envelope,
         **template,
         # Pipeline bookkeeping lives under _meta, where rule logic can't match it.
         "_meta": {

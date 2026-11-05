@@ -111,7 +111,11 @@ Game tests work like Atomic tests, except that each one is a script in `game/sce
 4. **Write the rule** with `x_game_test` and an `x_game_threat` label.
 5. **Push to a `telemetry/**` branch**, then compare the real logs with what you modeled and fix any differences.
 
-**Next up: license server abuse.** A small license server of the project's own would produce real logs, a script would simulate abuse such as one key activating on many devices, and rules would count activity over time. The rule engines will need to support aggregation first.
+### Rules that count events
+
+Use a [Sigma correlation](https://sigmahq.io/docs/meta/correlations.html) when one event isn't suspicious but a pattern is. The rule file holds two YAML documents: a base rule that selects events, then the correlation that counts them. The correlation holds the rule's ID, tags, and `x_game_test`. Only `event_count` and `value_count` with `gte` are supported, and anything else returns exit `2`.
+
+The pipeline counts each scenario separately, so benign events can't complete an attack's count. License tests use `kind: license` in the catalog, and their scripts in `game/scenarios/` talk to `game/license_server.py`. Prefer counting different values over counting attempts, because normal users repeat themselves.
 
 ## Phase 3: Stretch goals
 

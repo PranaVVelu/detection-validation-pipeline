@@ -1,0 +1,18 @@
+# Temporal correlations aren't supported, so this must not get a verdict.
+title: "Control: base rule"
+id: 00000000-0000-4000-8000-000000000014
+name: control_activation
+logsource: {category: license_activation, product: fakequest}
+detection:
+  selection: {event: activation}
+  condition: selection
+---
+title: "Control: unsupported correlation type"
+id: 00000000-0000-4000-8000-000000000015
+tags: [attack.t1078]
+correlation:
+  type: temporal
+  rules: [control_activation]
+  group-by: [license_key_hash]
+  timespan: 1h
+x_game_test: license-key-sharing

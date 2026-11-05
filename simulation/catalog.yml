@@ -116,3 +116,76 @@ tests:
       - SourceImage: C:\Games\FakeQuest\MemoryPeek.exe
         TargetImage: C:\Games\FakeQuest\FakeQuest.exe
         GrantedAccess: "0x1000"
+
+  license-key-guessing:
+    kind: license
+    technique: T1110
+    name: Guess license keys against the license server
+    category: license_activation
+    attack_events:
+      - repeat: 25
+        event: activation
+        result: failure
+        reason: unknown_key
+        license_key_hash: guessed-{n}
+        machine_id: machine-attacker
+        client_ip: 127.0.0.1
+    benign_events:
+      # A player mistyping their key: lots of failures, but very few different keys.
+      - repeat: 3
+        event: activation
+        result: failure
+        reason: unknown_key
+        license_key_hash: typo-{n}
+        machine_id: machine-player
+        client_ip: 127.0.0.1
+      - repeat: 15
+        event: activation
+        result: failure
+        reason: unknown_key
+        license_key_hash: typo-3
+        machine_id: machine-player
+        client_ip: 127.0.0.1
+      - event: activation
+        result: success
+        reason: none
+        license_key_hash: player-key
+        machine_id: machine-player
+        client_ip: 127.0.0.1
+
+  license-key-sharing:
+    kind: license
+    technique: T1078
+    name: Activate one license key on many machines
+    category: license_activation
+    attack_events:
+      - repeat: 2
+        event: activation
+        result: success
+        reason: none
+        license_key_hash: shared-key
+        machine_id: machine-shared-{n}
+        client_ip: 127.0.0.1
+      - repeat: 6
+        event: activation
+        result: failure
+        reason: seat_limit
+        license_key_hash: shared-key
+        machine_id: machine-refused-{n}
+        client_ip: 127.0.0.1
+    benign_events:
+      # A player reinstalling on their two PCs: many activations, but only two machines.
+      - repeat: 4
+        event: activation
+        result: success
+        reason: none
+        license_key_hash: player-key
+        machine_id: machine-desktop
+        client_ip: 127.0.0.1
+      - repeat: 4
+        event: activation
+        result: success
+        reason: none
+        license_key_hash: player-key
+        machine_id: machine-laptop
+        client_ip: 127.0.0.1
