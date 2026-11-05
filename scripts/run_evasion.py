@@ -22,7 +22,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -74,25 +74,31 @@ def modeled_events(variant: Dict[str, Any], rule: Rule, test: ValidationTest, ru
             for event in expand_events(variant["events"])]
 
 
-def run_game_variant(variant: Dict[str, Any], test: ValidationTest, run_id: str,
-                     raw_path: Path, workdir: Path) -> List[Dict[str, Any]]:
+def run_game_script(script: Path, raw_path: Path, workdir: Path) -> Tuple[List[Dict[str, Any]], int]:
+    """Run a script against the fake game, returning the raw events and the script's process ID."""
     since = datetime.now(timezone.utc) - timedelta(seconds=2)
-    command = [*POWERSHELL, str(VARIANTS_DIR / f"{variant['id']}.ps1"), "-GameDir", str(GAME_DIR / "bin")]
+    command = [*POWERSHELL, str(script), "-GameDir", str(GAME_DIR / "bin")]
     process = subprocess.Popen(command, cwd=workdir, stdin=subprocess.DEVNULL)
     if process.wait(timeout=180) != 0:
-        raise PipelineError(f"Variant {variant['id']} failed with exit code {process.returncode}")
+        raise PipelineError(f"{script.name} failed with exit code {process.returncode}")
 
-    # A variation that logged nothing proves nothing, so it mustn't read as "missed".
+    # A script that logged nothing proves nothing, so it mustn't read as "missed" or "quiet".
     deadline = time.monotonic() + SYSMON_WAIT_SECONDS
     while True:
         raw_events = export_sysmon(since, raw_path)
         if select_scenario_events(raw_events, process.pid):
             time.sleep(SYSMON_SETTLE_SECONDS)
-            return label_game_events(export_sysmon(since, raw_path), test, run_id, process.pid, NO_PROCESS)
+            return export_sysmon(since, raw_path), process.pid
         if time.monotonic() >= deadline:
             print(describe_processes(raw_events), file=sys.stderr)
-            raise PipelineError(f"Sysmon logged nothing for variant {variant['id']}")
+            raise PipelineError(f"Sysmon logged nothing for {script.name}")
         time.sleep(3)
+
+
+def run_game_variant(variant: Dict[str, Any], test: ValidationTest, run_id: str,
+                     raw_path: Path, workdir: Path) -> List[Dict[str, Any]]:
+    raw_events, pid = run_game_script(VARIANTS_DIR / f"{variant['id']}.ps1", raw_path, workdir)
+    return label_game_events(raw_events, test, run_id, pid, NO_PROCESS)
 
 
 def run_license_variant(variant: Dict[str, Any], test: ValidationTest, run_id: str, workdir: Path) -> List[Dict[str, Any]]:

@@ -4,7 +4,7 @@ RULE ?= detections/sigma/proc_creation_win_powershell_encoded_command.yml
 RUN_ID ?= local-$(shell date +%s)
 COMPOSE_ENV = HOST_UID=$(shell id -u) HOST_GID=$(shell id -g)
 
-.PHONY: setup test lint validate validate-docker evasion clean
+.PHONY: setup test lint validate validate-docker evasion noise clean
 
 setup:  ## Install development dependencies
 	$(PYTHON) -m pip install -r requirements-dev.txt
@@ -29,6 +29,9 @@ validate-docker:  ## Validate RULE in the isolated containers, as CI does
 
 evasion:  ## Score the rules against modeled evasion variations
 	$(PYTHON) scripts/run_evasion.py --mode simulated --run-id "$(RUN_ID)" --report reports/scorecard.json --summary reports/scorecard.md
+
+noise:  ## Score each rule's noise against modeled normal activity
+	$(PYTHON) scripts/run_noise.py --mode simulated --run-id "$(RUN_ID)" --report reports/noise.json --summary reports/noise.md
 
 clean:  ## Stop the containers and delete reports
 	docker compose down -v --remove-orphans
