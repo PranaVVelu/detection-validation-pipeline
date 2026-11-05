@@ -13,6 +13,7 @@ on:
       - "scripts/**"
       - "telemetry/**"
       - "game/**"
+      - "dashboard/**"
       - "requirements*.txt"
       - ".github/workflows/real-telemetry.yml"
   workflow_dispatch:
@@ -233,3 +234,52 @@ jobs:
           path: reports/
           if-no-files-found: warn
           retention-days: 30
+
+  dashboard:
+    name: Build the dashboard
+    # Runs even when a check failed, so that the page shows the failure.
+    needs: [validate, evasion, elastic]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: artifacts
+
+      - name: Build the page from this run's results
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT: ${{ github.sha }}
+        run: >
+          python scripts/build_dashboard.py --artifacts artifacts --out site
+          --run-url "$RUN_URL" --commit "$COMMIT" --finished "$(date -u '+%-d %b %Y, %H:%M UTC')"
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+  publish:
+    name: Publish the dashboard
+    # Only main reaches the public page. Other branches stop at the build above.
+    needs: dashboard
+    if: ${{ !cancelled() && needs.dashboard.result == 'success' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
