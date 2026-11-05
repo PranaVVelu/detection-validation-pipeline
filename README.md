@@ -2,6 +2,8 @@
 
 ![Detection Validation](https://github.com/PranaVVelu/detection-validation-pipeline/actions/workflows/detect-test.yml/badge.svg)
 
+**[See the live results](https://pranavvelu.github.io/detection-validation-pipeline/)**, rebuilt from every real run on `main`.
+
 **Detection-as-code with a real test step.** When a Sigma or KQL rule is added or changed, CI replays telemetry modeled on the rule's mapped Atomic Red Team test through a mock SIEM, then blocks the merge unless the rule fires on the attack and stays quiet on normal activity.
 
 A rule that parses isn't necessarily a rule that works. Syntax linters can't tell you that a rule misses the abbreviated `-e` flag attackers really use, or that it also fires on every `-ExecutionPolicy`. This pipeline catches both.
@@ -93,6 +95,7 @@ detections/
   sigma/                            Sigma rules (*.yml, *.yaml)
   kql/                              KQL rules (*.kql)
 game/                               FakeQuest, its test tool, the license server, and the abuse scenarios
+dashboard/                          The public page's styles and written content
 simulation/catalog.yml              Test telemetry and the benign baseline
 telemetry/sysmon-config.xml         Sysmon configuration for real runs
 scripts/
@@ -246,7 +249,7 @@ The KQL rule isn't compared, because Elasticsearch can't run KQL as written here
 5. ~~Try harmless variations of each attack, and score which ones get past each rule~~
 6. ~~Measure each rule's noise against realistic normal activity~~
 7. ~~Run the rules in a real SIEM as well as the mock~~
-8. **Public dashboard:** publish coverage, the latest results, and known gaps
+8. ~~Publish coverage, the latest results, and known gaps on a [public dashboard](https://pranavvelu.github.io/detection-validation-pipeline/)~~
 
 ## Scope and limitations
 

@@ -111,6 +111,10 @@ Game tests work like Atomic tests, except that each one is a script in `game/sce
 4. **Write the rule** with `x_game_test` and an `x_game_threat` label.
 5. **Push to a `telemetry/**` branch**, then compare the real logs with what you modeled and fix any differences.
 
+### Public dashboard
+
+`scripts/build_dashboard.py` builds the page from the results of each real run, and only runs on `main` publish it. To set it up on a fork, go to **Settings > Pages** and set **Source** to **GitHub Actions**. Scores always come from the run, so write new findings and limits in `dashboard/content.yml` without current numbers.
+
 ### Elasticsearch comparison
 
 The `Compare with Elasticsearch` job runs after the real Windows jobs and reads the logs they saved. When a result differs, find out which side is right before recording it in `simulation/siem-differences.yml`. If the rule engine is wrong, fix the engine. Dependencies live in `requirements-siem.txt`, because `sigma-cli` pins its own version of pySigma.

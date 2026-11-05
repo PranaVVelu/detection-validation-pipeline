@@ -1,0 +1,45 @@
+# The written parts of the public dashboard. Every number on the page comes from the
+# latest real run instead, so nothing here should state a current score.
+findings:
+  - when: Phase 2
+    title: Windows doubled the percent signs
+    detail: A command run with %VAR% was logged as %%VAR%%, so the simulated logs had to change to match.
+    link: https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41968291534
+  - when: Phase 2
+    title: The DLL was never really planted
+    detail: The .NET runtime loads version.dll before the game's code runs, so the planted copy went unused. The rule was right to stay quiet, and the test was wrong.
+    link: https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41979542696
+  - when: Phase 2
+    title: Windows changes the access it logs
+    detail: A request for 0x0438 is logged as 0x1438, so a rule looking only for the requested value would miss it.
+    link: https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41979542696
+  - when: Phase 4
+    title: Every compile has a different hash
+    detail: Building the same code gave different hashes across jobs, so the official hash can't be written into the rule.
+    link: https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41984249170
+  - when: Phase 5
+    title: Rules caught 2 of 10 variations at first
+    detail: Three rule fixes raised that to 5 of 10. The other misses stay on record with the reason each is hard to fix.
+    link: https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41988288045
+  - when: Phase 6
+    title: 4 of 11 normal scenarios stayed quiet at first
+    detail: Raising the guessing threshold silenced small LAN events, at the cost of giving a guesser 19 tries instead of 9.
+    link: https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41991611893
+  - when: Phase 7
+    title: Converted rules don't always behave the same
+    detail: Elasticsearch rejected some converted queries outright, and its case-sensitive matching misses -EncodedCommand.
+    link: https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41994503119
+
+limits:
+  - title: It's a fake game
+    detail: Game rules protect FakeQuest, a harmless stand-in. A real game would need its own names, access values, and DLL lists.
+  - title: The activity is scripted
+    detail: Attacks and normal activity come from test scripts on disposable machines, so this can't say how often an alert would fire with real players.
+  - title: Thresholds aren't tuned for real traffic
+    detail: Numbers such as 20 guessed keys show the tradeoff. A real team would choose them from real traffic.
+  - title: These are the gaps found so far
+    detail: The evasion variations only cover the game and license rules, and they aren't a complete list of ways around a rule.
+  - title: Rules aren't portable as they stand
+    detail: Only Sigma rules are compared with Elasticsearch, on one version of the converter, and agreement only covers these logs.
+
+ground_rules: This project detects tampering. It contains no cracks, cheats, or bypass steps, and it never touches a real game, license service, or anti-cheat product.
