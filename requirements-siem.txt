@@ -1,0 +1,7 @@
+# Converts Sigma rules to Elastic queries for scripts/compare_elastic.py. Kept apart
+# from requirements-dev.txt because sigma-cli pins its own version of pySigma.
+-r requirements.txt
+pySigma==0.11.23
+pySigma-backend-elasticsearch==1.1.6
+# Newer versions crash pySigma on any rule that uses `not`.
+pyparsing==3.2.5

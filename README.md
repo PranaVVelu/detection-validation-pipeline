@@ -223,6 +223,20 @@ Before tuning, **4 of 11** scenarios set off no rules on real logs. Now **5 of 1
 
 The tuning has a cost: a guesser now gets 19 tries instead of 9 before an alert. The activity is scripted, so this shows which kinds of normal behavior set off each rule, not how often they'd happen with real players.
 
+## Elasticsearch comparison
+
+Rules pass or fail on engines this project wrote, so a pass could mean the engine and the rule share a misunderstanding. Each real run therefore loads its saved logs into a real Elasticsearch, converts the nine Sigma rules with the standard pySigma tools, and compares whether each rule fires on each set of logs. A difference that isn't [on record](simulation/siem-differences.yml) fails the run.
+
+**125 of 127 results agree.** The comparison also found problems that testing against this project's engine never could:
+
+- **Case sensitivity:** the converted queries are case-sensitive, but Sigma rules are meant to ignore case. In Elasticsearch, the rules miss an uppercase `WINMM.DLL` and PowerShell's `-EncodedCommand`. These are the two recorded differences.
+- **Backslashes:** the converter's `like` patterns are rejected outright when a rule contains a Windows path. [`compare_elastic.py`](scripts/compare_elastic.py) corrects them.
+- **Regexes:** the converter's `rlike` patterns have to match the whole value and turn `\d` into a literal, so the obfuscation rule never fired. The script corrects those too.
+
+These apply to `pySigma-backend-elasticsearch` 1.1.6, the newest version that was tested here. Newer versions weren't tried.
+
+The KQL rule isn't compared, because Elasticsearch can't run KQL as written here. Elasticsearch also counts in fixed time windows rather than sliding ones, so a burst of activity that crosses a window boundary could give a different count.
+
 ## Roadmap
 
 1. ~~Validate rules against simulated attacks in CI~~
@@ -231,11 +245,12 @@ The tuning has a cost: a guesser now gets 19 tries instead of 9 before an alert.
 4. ~~Spot bootleg copies: game builds that don't match the official release~~
 5. ~~Try harmless variations of each attack, and score which ones get past each rule~~
 6. ~~Measure each rule's noise against realistic normal activity~~
-7. **Real SIEM:** run the rules in a real SIEM as well as the mock
+7. ~~Run the rules in a real SIEM as well as the mock~~
 8. **Public dashboard:** publish coverage, the latest results, and known gaps
 
 ## Scope and limitations
 
+- **Rules aren't portable as they stand.** The [Elasticsearch comparison](#elasticsearch-comparison) shows that converted rules can behave differently, so they need testing in whichever SIEM runs them.
 - **Known noise remains.** The [noise score](#noise-score) lists the normal activity that still sets off rules.
 - **Known blind spots remain.** The [evasion scorecard](#evasion-scorecard) lists what the rules still miss.
 - **License traffic is scripted.** The server and its logs are real, but the requests come from test scripts on one machine, so every request has the same address. Real thresholds need tuning against real player traffic, and the scorecard records that spreading guesses across addresses gets past the guessing rule.

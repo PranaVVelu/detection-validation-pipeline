@@ -44,6 +44,7 @@ sequenceDiagram
 | --- | --- | --- |
 | **Simulated telemetry first** | Runs on every PR in seconds, with nothing dangerous to contain | Doesn't prove a real sensor produces the telemetry |
 | **Real telemetry outside PRs** | Real logs catch what simulation can't, but executing tests must not be controllable from a PR | Real results arrive after a push, so they aren't a merge gate |
+| **Compare with Elasticsearch on saved logs** | Checks the project's engine against an independent one, without needing Windows and Linux containers on one runner | Only covers Sigma rules, and depends on how good the converter is |
 | **Every rule scored on every normal scenario** | Noise can come from a rule nobody was thinking about | Adding a rule can change results for many scenarios at once |
 | **Scorecard fails on any change, not on a miss** | Known blind spots can stay on record while regressions still fail the run | Someone has to update the record when a result improves |
 | **Official hashes as Sigma placeholders** | The rule stays fixed while each build supplies its own hash, like a SIEM lookup table | The rule's result depends on a list outside the rule, so a stale list causes false alerts |
