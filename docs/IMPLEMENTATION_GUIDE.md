@@ -85,27 +85,28 @@ Open these as real PRs. They're what a reviewer will click on.
 
 ## Phase 2: Real execution with Invoke-Atomic
 
-This phase closes the project's biggest gap, by proving that real telemetry triggers the rule.
+`real-telemetry.yml` gives each rule its own disposable `windows-2022` runner, which:
 
-> **Not yet tested.** Everything in this phase is a starting outline. Unlike the rest of the repo, it hasn't been run.
+1. Installs Sysmon with the minimal config in `telemetry/sysmon-config.xml`, after checking Microsoft's signature on the download.
+2. Downloads the Atomic definition from the commit pinned in the catalog, and stops if the command no longer matches.
+3. Runs the benign baseline and then the test, using `Invoke-AtomicTest`.
+4. Exports the Sysmon logs and labels events by process tree.
+5. Runs the same `ship_events.py` and `validate_alert.py` stages as the simulated flow.
 
-The design adds a job that runs only on `workflow_dispatch` or a schedule, never on PRs, so untrusted PR code can't trigger real technique execution:
+To run it, go to **Actions > Real Telemetry Validation > Run workflow**, or push to a `telemetry/**` branch. To see the evidence, open a run and download its artifact, which contains `sysmon-raw.xml`.
 
-1. Use a `windows-2022` GitHub-hosted runner, which is discarded after each job.
-2. Install Sysmon with a configuration such as [SwiftOnSecurity's](https://github.com/SwiftOnSecurity/sysmon-config).
-3. Install the framework and run the test by GUID:
+Things to keep in mind:
 
-   ```powershell
-   IEX (IWR 'https://raw.githubusercontent.com/redcanaryco/invoke-atomicredteam/master/install-atomicredteam.ps1' -UseBasicParsing)
-   Install-AtomicRedTeam -getAtomics -Force
-   Invoke-AtomicTest T1059.001 -TestGuids a538de64-1c74-46ed-aa60-b995ed302598
-   ```
+- **Only run tests you've read.** Stick to harmless ones like these two. Don't run anything that downloads tools or dumps credentials on shared infrastructure.
+- **Never trigger this from pull requests.** It executes code, so it's limited to people with write access.
+- **Update the simulation when real logs surprise you.** When real behavior differs from the catalog, fix the catalog so that the fast PR check stays accurate.
 
-   Pin the installer to a commit rather than `master` before relying on this.
-4. Export Sysmon events with `Get-WinEvent`, and convert them to the JSONL format that `simulate_atomic.py` writes. Tag them `scenario: attack`, and keep the catalog's benign baseline.
-5. Hand the file to `ship_events.py` and `validate_alert.py`, which don't need to change.
+## Next: game security detections
 
-Expect some friction: Microsoft Defender may block some tests, and timing makes it harder to attribute events to a specific test. Only run tests you've read, and stick to benign ones like these two. Don't run anything that downloads tools or dumps credentials on shared infrastructure.
+The planned direction is detecting game tampering and license abuse, using a harmless fake game of the project's own. It detects tampering only, with no real cracks, cheats, bypass steps, or commercial game files.
+
+1. **Tampering on the PC:** rules for things like a license server blocked in the `hosts` file, an unexpected DLL in the game folder, or a process injecting into the game.
+2. **License server abuse:** a small license server that produces real logs, a script that simulates abuse such as one key activating on many devices, and rules that count activity over time.
 
 ## Phase 3: Stretch goals
 

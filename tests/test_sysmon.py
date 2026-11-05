@@ -107,3 +107,26 @@ def test_process_listing_shows_commands_for_diagnosis():
     listing = describe_processes(parse_export(RAW))
     assert "powershell.exe -e  RUNNERNOISE" in listing
     assert listing.startswith(f"Sysmon recorded {len(parse_export(RAW))} process(es):")
+
+
+OBSERVED_CMD_EVENTS = [
+    {"ProcessId": "5200", "ProcessGuid": "{wrapper}", "ParentProcessGuid": "{python}",
+     "CommandLine": "powershell.exe -File run_atomic.ps1"},
+    {"ProcessId": "2892", "ProcessGuid": "{cmd}", "ParentProcessGuid": "{wrapper}",
+     "Image": "C:\\Windows\\System32\\cmd.exe",
+     "CommandLine": '"cmd.exe" /c %%LOCALAPPDATA:~-3,1%%md /c echo Hello, from CMD! > hello.txt & type hello.txt'},
+]
+
+
+def test_doubled_percent_signs_from_real_logs_still_locate_the_test():
+    """Regression: copied from real Sysmon output, where % was recorded as %%."""
+    test = load_atomic_test("d0eb3597-a1b3-4d65-b33b-2cda8d397f20")
+    selected = select_test_execution(OBSERVED_CMD_EVENTS, 5200, test.command_marker)
+    assert [event["ProcessId"] for event in selected] == ["2892"]
+
+
+def test_rule_fires_on_the_event_exactly_as_logged():
+    """Rules must match the raw log, because production logs aren't normalized."""
+    rule = load_rule(REPO_ROOT / "detections/sigma/proc_creation_win_cmd_env_var_substring_obfuscation.yml")
+    event = {**OBSERVED_CMD_EVENTS[1], "_meta": {"category": "process_creation"}}
+    assert rule.matches(event)

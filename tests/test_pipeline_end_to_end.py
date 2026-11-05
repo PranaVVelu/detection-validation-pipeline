@@ -11,6 +11,7 @@ import pytest
 import yaml
 
 from conftest import FIXTURES, REPO_ROOT, run_script
+from dvp.sysmon import normalize_percent_signs
 
 PASS, FAIL, ERROR = 0, 1, 2
 REPO_RULES = sorted((REPO_ROOT / "detections").rglob("*.*"))
@@ -132,4 +133,5 @@ def test_catalog_events_contain_the_upstream_atomic_command():
     catalog = yaml.safe_load((REPO_ROOT / "simulation/catalog.yml").read_text(encoding="utf-8"))
     for guid, test in catalog["tests"].items():
         fixed_prefix = test["upstream_command"].split("#{")[0].strip()
-        assert any(fixed_prefix in event["CommandLine"] for event in test["attack_events"]), guid
+        assert any(fixed_prefix in normalize_percent_signs(event["CommandLine"])
+                   for event in test["attack_events"]), guid

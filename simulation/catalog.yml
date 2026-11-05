@@ -3,7 +3,8 @@
 # `upstream_command` is copied from the Atomic definition at the commit below.
 # `attack_events` model what a sensor records when the command runs. They are
 # written from the test itself, never from a rule: telemetry shaped to fit the
-# rule under test would prove nothing.
+# rule under test would prove nothing. They match the command lines that Sysmon
+# recorded in the Real Telemetry Validation workflow, including its quirks.
 upstream:
   repository: https://github.com/redcanaryco/atomic-red-team
   commit: a8f00488f3be0d6f8a967585848bb3817a590e31
@@ -38,13 +39,13 @@ tests:
     attack_events:
       # The executor is command_prompt, so cmd.exe launches PowerShell.
       - Image: C:\Windows\System32\cmd.exe
-        CommandLine: 'cmd.exe /c powershell.exe -e  JgAgACgAZwBjAG0AIAAoACcAaQBlAHsAMAB9ACcAIAAtAGYAIAAnAHgAJwApACkAIAAoACIAVwByACIAKwAiAGkAdAAiACsAIgBlAC0ASAAiACsAIgBvAHMAdAAgACcASAAiACsAIgBlAGwAIgArACIAbABvACwAIABmAHIAIgArACIAbwBtACAAUAAiACsAIgBvAHcAIgArACIAZQByAFMAIgArACIAaAAiACsAIgBlAGwAbAAhACcAIgApAA=='
+        CommandLine: '"cmd.exe" /c powershell.exe -e  JgAgACgAZwBjAG0AIAAoACcAaQBlAHsAMAB9ACcAIAAtAGYAIAAnAHgAJwApACkAIAAoACIAVwByACIAKwAiAGkAdAAiACsAIgBlAC0ASAAiACsAIgBvAHMAdAAgACcASAAiACsAIgBlAGwAIgArACIAbABvACwAIABmAHIAIgArACIAbwBtACAAUAAiACsAIgBvAHcAIgArACIAZQByAFMAIgArACIAaAAiACsAIgBlAGwAbAAhACcAIgApAA=='
         ParentImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
         ParentCommandLine: powershell.exe -NoProfile
       - Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
-        CommandLine: 'powershell.exe -e  JgAgACgAZwBjAG0AIAAoACcAaQBlAHsAMAB9ACcAIAAtAGYAIAAnAHgAJwApACkAIAAoACIAVwByACIAKwAiAGkAdAAiACsAIgBlAC0ASAAiACsAIgBvAHMAdAAgACcASAAiACsAIgBlAGwAIgArACIAbABvACwAIABmAHIAIgArACIAbwBtACAAUAAiACsAIgBvAHcAIgArACIAZQByAFMAIgArACIAaAAiACsAIgBlAGwAbAAhACcAIgApAA=='
+        CommandLine: 'powershell.exe  -e  JgAgACgAZwBjAG0AIAAoACcAaQBlAHsAMAB9ACcAIAAtAGYAIAAnAHgAJwApACkAIAAoACIAVwByACIAKwAiAGkAdAAiACsAIgBlAC0ASAAiACsAIgBvAHMAdAAgACcASAAiACsAIgBlAGwAIgArACIAbABvACwAIABmAHIAIgArACIAbwBtACAAUAAiACsAIgBvAHcAIgArACIAZQByAFMAIgArACIAaAAiACsAIgBlAGwAbAAhACcAIgApAA=='
         ParentImage: C:\Windows\System32\cmd.exe
-        ParentCommandLine: 'cmd.exe /c powershell.exe -e  JgAgACgAZwBjAG0AIAAoACcAaQBlAHsAMAB9ACcAIAAtAGYAIAAnAHgAJwApACkAIAAoACIAVwByACIAKwAiAGkAdAAiACsAIgBlAC0ASAAiACsAIgBvAHMAdAAgACcASAAiACsAIgBlAGwAIgArACIAbABvACwAIABmAHIAIgArACIAbwBtACAAUAAiACsAIgBvAHcAIgArACIAZQByAFMAIgArACIAaAAiACsAIgBlAGwAbAAhACcAIgApAA=='
+        ParentCommandLine: '"cmd.exe" /c powershell.exe -e  JgAgACgAZwBjAG0AIAAoACcAaQBlAHsAMAB9ACcAIAAtAGYAIAAnAHgAJwApACkAIAAoACIAVwByACIAKwAiAGkAdAAiACsAIgBlAC0ASAAiACsAIgBvAHMAdAAgACcASAAiACsAIgBlAGwAIgArACIAbABvACwAIABmAHIAIgArACIAbwBtACAAUAAiACsAIgBvAHcAIgArACIAZQByAFMAIgArACIAaAAiACsAIgBlAGwAbAAhACcAIgApAA=='
 
   d0eb3597-a1b3-4d65-b33b-2cda8d397f20:
     technique: T1059.003
@@ -52,8 +53,13 @@ tests:
     category: process_creation
     upstream_command: "%LOCALAPPDATA:~-3,1%md /c echo #{input_message} > #{output_file} & type #{output_file}"
     attack_events:
-      # The outer shell's command line keeps the unexpanded variable substring.
+      # The outer shell keeps the unexpanded substring. Sysmon records each % as %%.
       - Image: C:\Windows\System32\cmd.exe
-        CommandLine: 'cmd.exe /c %LOCALAPPDATA:~-3,1%md /c echo Hello, from CMD! > hello.txt & type hello.txt'
+        CommandLine: '"cmd.exe" /c %%LOCALAPPDATA:~-3,1%%md /c echo Hello, from CMD! > hello.txt & type hello.txt'
         ParentImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
         ParentCommandLine: powershell.exe -NoProfile
+      # The expanded command is what actually ran, so the obfuscation is gone here.
+      - Image: C:\Windows\System32\cmd.exe
+        CommandLine: 'cmd  /c echo Hello, from CMD!  '
+        ParentImage: C:\Windows\System32\cmd.exe
+        ParentCommandLine: '"cmd.exe" /c %%LOCALAPPDATA:~-3,1%%md /c echo Hello, from CMD! > hello.txt & type hello.txt'

@@ -45,6 +45,16 @@ def parse_export(lines: Iterable[str]) -> List[Dict[str, Any]]:
     return [event for event in events if event["EventID"] == PROCESS_CREATE_EVENT_ID]
 
 
+def normalize_percent_signs(command_line: str) -> str:
+    """Undo the doubling seen in real logs, for matching a command to its source.
+
+    A command run with %VAR% was recorded as %%VAR%%, while its child processes
+    showed the single form had really run. Only this lookup normalizes: rules see
+    the event exactly as it was logged, as they would in production.
+    """
+    return command_line.replace("%%", "%")
+
+
 def _walk_tree(events: List[Dict[str, Any]], root: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Return an event and its descendants, linked by ProcessGuid.
 
@@ -77,7 +87,7 @@ def select_test_execution(events: List[Dict[str, Any]], root_pid: int, marker: s
     """
     wrapper_tree = select_process_tree(events, root_pid, include_root=False)
     for event in wrapper_tree:
-        if marker in event.get("CommandLine", ""):
+        if marker in normalize_percent_signs(event.get("CommandLine", "")):
             return _walk_tree(events, event)
     return []
 
