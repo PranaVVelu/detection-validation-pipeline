@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
-import urllib.error
 import urllib.parse
-import urllib.request
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,15 +19,16 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def activate(url: str, key: str, machine_id: str) -> None:
+def activate(url: str, key: str, machine_id: str, source_ip: str = "") -> None:
     """Make one activation attempt. A refusal is an expected result, and gets logged by the server."""
-    request = urllib.request.Request(
-        f"{url}/activate", data=json.dumps({"key": key, "machine_id": machine_id}).encode("utf-8"),
-        headers={"Content-Type": "application/json"}, method="POST",
-    )
+    parsed = urllib.parse.urlparse(url)
+    source = (source_ip, 0) if source_ip else None
+    connection = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=10, source_address=source)
     try:
-        with urllib.request.urlopen(request, timeout=10):
-            pass
-    except urllib.error.HTTPError as exc:
-        if exc.code != 403:
-            raise
+        connection.request("POST", "/activate", json.dumps({"key": key, "machine_id": machine_id}),
+                           {"Content-Type": "application/json"})
+        status = connection.getresponse().status
+    finally:
+        connection.close()
+    if status not in (200, 403):
+        raise RuntimeError(f"unexpected response from the license server: {status}")

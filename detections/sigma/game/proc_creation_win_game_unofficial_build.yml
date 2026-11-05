@@ -3,7 +3,8 @@ id: 9a4d2f68-1e7b-4c30-a8d5-6f0b3c7e2914
 status: experimental
 description: >
   Detects the game running with a file hash that isn't on the official release list,
-  which suggests a bootleg or modified copy. Only checks files with the game's name.
+  which suggests a bootleg or modified copy. It also reads the name stored inside the
+  file, so renaming the file doesn't hide it.
 references:
   - https://attack.mitre.org/techniques/T1554/
 author: PranaVVelu
@@ -15,11 +16,13 @@ logsource:
   category: process_creation
   product: windows
 detection:
-  selection:
+  selection_path:
     Image|endswith: '\FakeQuest.exe'
+  selection_embedded_name:
+    OriginalFileName: 'FakeQuest.exe'
   filter_official:
     Hashes|expand: '%official_fakequest_hashes%'
-  condition: selection and not filter_official
+  condition: 1 of selection_* and not filter_official
 falsepositives:
   - A new official patch that hasn't been added to the list yet
   - Legitimate mods that change the game's own file

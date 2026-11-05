@@ -77,9 +77,12 @@ tests:
         CommandLine: '"C:\Windows\system32\cmd.exe" /c "echo 127.0.0.1 license.fakequest.invalid>> C:\Windows\System32\drivers\etc\hosts"'
         ParentImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
     benign_events:
-      # Reading the file, and a developer adding their own entry.
+      # Reading the file, searching it for a license entry, and a developer adding their own entry.
       - Image: C:\Windows\System32\cmd.exe
         CommandLine: '"C:\Windows\system32\cmd.exe" /c "type C:\Windows\System32\drivers\etc\hosts"'
+        ParentImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      - Image: C:\Windows\System32\cmd.exe
+        CommandLine: '"C:\Windows\system32\cmd.exe" /c "findstr license C:\Windows\System32\drivers\etc\hosts & exit /b 0"'
         ParentImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
       - Image: C:\Windows\System32\cmd.exe
         CommandLine: '"C:\Windows\system32\cmd.exe" /c "echo 127.0.0.1 dev.local>> C:\Windows\System32\drivers\etc\hosts"'

@@ -16,12 +16,17 @@ logsource:
   category: process_creation
   product: windows
 detection:
-  selection:
+  selection_target:
     CommandLine|contains|all:
       - '\drivers\etc\hosts'
-      - '>'
       - 'license'
-  condition: selection
+  selection_write:
+    CommandLine|contains:
+      - '>'
+      - 'Add-Content'
+      - 'Set-Content'
+      - 'Out-File'
+  condition: selection_target and selection_write
 falsepositives:
   - Administrators testing their own license servers
 level: medium

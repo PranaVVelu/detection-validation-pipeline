@@ -31,7 +31,7 @@ class ValidationTest:
         return self.upstream_command.split("#{")[0].strip()
 
 
-def _expand(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def expand_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Expand ``repeat: N`` into N events, replacing ``{n}`` in their text fields."""
     expanded: List[Dict[str, Any]] = []
     for template in events:
@@ -59,7 +59,7 @@ def load_test(guid: str, catalog_path: Path = DEFAULT_CATALOG) -> ValidationTest
         name=entry["name"],
         category=entry["category"],
         upstream_command=entry.get("upstream_command", ""),
-        attack_events=_expand(entry["attack_events"]),
-        benign_events=_expand(entry.get("benign_events") or catalog["benign_baseline"][entry["category"]]),
+        attack_events=expand_events(entry["attack_events"]),
+        benign_events=expand_events(entry.get("benign_events") or catalog["benign_baseline"][entry["category"]]),
         upstream_commit=catalog["upstream"]["commit"],
     )
