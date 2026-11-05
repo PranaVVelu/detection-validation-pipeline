@@ -91,6 +91,10 @@ jobs:
       - name: Validate the alert
         run: python scripts/validate_alert.py --rule "$env:RULE" --run-id "$env:RUN_ID" --alerts-file reports/alerts.json --telemetry "Real" --report reports/report.json --summary reports/summary.md
 
+      - name: Keep the official hash list with the logs
+        if: always()
+        run: if (Test-Path game/bin/placeholders.yml) { Copy-Item game/bin/placeholders.yml reports/ }
+
       - name: Publish the job summary
         if: always()
         run: |
@@ -150,6 +154,10 @@ jobs:
         if: success() || failure()
         run: python scripts/run_noise.py --mode real --run-id "$env:RUN_ID-noise" --report reports/noise.json --summary reports/noise.md --raw-out reports/noise-raw-logs.txt
 
+      - name: Keep the official hash list with the logs
+        if: always()
+        run: if (Test-Path game/bin/placeholders.yml) { Copy-Item game/bin/placeholders.yml reports/ }
+
       - name: Publish the scorecards
         if: always()
         run: |
@@ -166,6 +174,62 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: evasion-scorecard
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 30
+
+  elastic:
+    name: Compare with Elasticsearch
+    # Windows runners can't run this container, so a Linux job loads the logs that the
+    # Windows jobs saved. Nothing here executes the tests or reaches beyond this runner.
+    needs: [validate, evasion]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.19.5
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: "false"
+          ES_JAVA_OPTS: -Xms1g -Xmx1g
+        ports:
+          - 127.0.0.1:9200:9200
+        options: >-
+          --health-cmd "curl -fsS http://127.0.0.1:9200/_cluster/health"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-siem.txt
+      - run: pip install -r requirements-siem.txt
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: artifacts
+
+      - name: Compare the rule engine with Elasticsearch
+        run: python scripts/compare_elastic.py --artifacts artifacts --report reports/elastic.json --summary reports/elastic.md
+
+      - name: Publish the comparison
+        if: always()
+        run: |
+          if [ -f reports/elastic.md ]; then
+            cat reports/elastic.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ERROR: the comparison stopped before finishing. See the job log." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: elastic-comparison
           path: reports/
           if-no-files-found: warn
           retention-days: 30

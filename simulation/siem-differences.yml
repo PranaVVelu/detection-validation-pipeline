@@ -1,0 +1,11 @@
+# Results where a real Elasticsearch disagrees with this project's rule engine. A
+# disagreement that isn't listed here fails the run, and so does one that has gone away.
+differences:
+  - dataset: evasion/dll-uppercase-name
+    rule_file: detections/sigma/game/image_load_win_game_system_dll_outside_system_folder.yml
+    scenario: attack
+    why: Elastic's converted query is case-sensitive, so it misses WINMM.DLL. Sigma rules are meant to ignore case.
+  - dataset: noise/admin-encoded-command
+    rule_file: detections/sigma/proc_creation_win_powershell_encoded_command.yml
+    scenario: benign
+    why: Elastic's converted query is case-sensitive, so it misses -EncodedCommand. That removes this noise, but also a real detection.

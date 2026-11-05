@@ -111,6 +111,10 @@ Game tests work like Atomic tests, except that each one is a script in `game/sce
 4. **Write the rule** with `x_game_test` and an `x_game_threat` label.
 5. **Push to a `telemetry/**` branch**, then compare the real logs with what you modeled and fix any differences.
 
+### Elasticsearch comparison
+
+The `Compare with Elasticsearch` job runs after the real Windows jobs and reads the logs they saved. When a result differs, find out which side is right before recording it in `simulation/siem-differences.yml`. If the rule engine is wrong, fix the engine. Dependencies live in `requirements-siem.txt`, because `sigma-cli` pins its own version of pySigma.
+
 ### Noise scenarios
 
 To add normal activity, add a script to `game/noise/` named after its ID, then add an entry to `simulation/noise.yml` with the rules it sets off, the reason, and modeled events. Run `make noise` to check the modeled events, then push to a `telemetry/**` branch to run it for real. Check the evasion scorecard when you tune a rule, because tuning away noise can open a blind spot.
