@@ -4,21 +4,31 @@ Supported: search identifiers (maps and lists of maps), wildcards, the modifiers
 in ``SUPPORTED_MODIFIERS``, and conditions built from and/or/not, parentheses,
 ``1 of`` and ``all of``. Anything else raises ``RuleError``.
 
+The ``expand`` modifier fills in a list that varies by environment, such as the
+official hashes of a game build. Values come from the YAML file named by the
+``DVP_PLACEHOLDERS`` environment variable, or the simulated defaults.
+
 Spec: https://sigmahq.io/docs/basics/rules.html
 """
 
 from __future__ import annotations
 
 import fnmatch
+import os
 import re
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping
+
+import yaml
 
 from dvp.errors import RuleError
 
 Event = Mapping[str, Any]
 Predicate = Callable[[Event], bool]
 
-SUPPORTED_MODIFIERS = {"contains", "startswith", "endswith", "all", "re", "cased", "windash"}
+SUPPORTED_MODIFIERS = {"contains", "startswith", "endswith", "all", "re", "cased", "windash", "expand"}
+DEFAULT_PLACEHOLDERS = Path(__file__).resolve().parents[2] / "simulation" / "placeholders.yml"
+_PLACEHOLDER = re.compile(r"^%(\w+)%$")
 _WINDASH_ALTERNATIVES = ("-", "/", "–", "—", "―")
 _CONDITION_TOKEN = re.compile(r"\s*(\(|\)|(?:1|all)\s+of\s+[\w*]+|[\w*]+)")
 
@@ -46,6 +56,21 @@ def _windash_variants(value: str) -> List[str]:
     ]
 
 
+def _expand_placeholder(field: str, value: Any) -> List[Any]:
+    """Look up a placeholder's values. An empty list would make a filter match nothing."""
+    match = _PLACEHOLDER.match(str(value))
+    if not match:
+        raise RuleError(f"expand on {field!r} needs a value like %name%, not {value!r}")
+    path = Path(os.environ.get("DVP_PLACEHOLDERS") or DEFAULT_PLACEHOLDERS)
+    try:
+        values = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get(match.group(1))
+    except (OSError, yaml.YAMLError, AttributeError) as exc:
+        raise RuleError(f"cannot read placeholders from {path}: {exc}") from exc
+    if not values or not isinstance(values, list):
+        raise RuleError(f"placeholder {match.group(1)!r} has no values in {path}")
+    return values
+
+
 def _compile_value(value: Any, modifiers: set) -> Callable[[str], bool]:
     text = str(value)
     if "re" in modifiers:
@@ -71,6 +96,8 @@ def _compile_field(spec: str, expected: Any) -> Predicate:
         raise RuleError(f"unsupported Sigma modifier(s) on {field!r}: {sorted(unsupported)}")
 
     values = expected if isinstance(expected, list) else [expected]
+    if "expand" in modifiers:
+        values = [item for value in values for item in _expand_placeholder(field, value)]
     if any(value is None for value in values):
         if len(values) > 1:
             raise RuleError(f"mixing null with other values on {field!r} is not supported")

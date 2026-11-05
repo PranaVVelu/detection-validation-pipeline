@@ -1,0 +1,10 @@
+# Checks only the name, so it can't tell a bootleg copy from the official build.
+title: "Negative control: any build of the game"
+id: 00000000-0000-4000-8000-000000000016
+logsource: {category: process_creation, product: windows}
+tags: [attack.t1554]
+detection:
+  selection:
+    Image|endswith: '\FakeQuest.exe'
+  condition: selection
+x_game_test: game-bootleg-build

@@ -111,6 +111,10 @@ Game tests work like Atomic tests, except that each one is a script in `game/sce
 4. **Write the rule** with `x_game_test` and an `x_game_threat` label.
 5. **Push to a `telemetry/**` branch**, then compare the real logs with what you modeled and fix any differences.
 
+### Values that change by environment
+
+The official game hash changes with every build, so it can't be written into a rule. The rule uses Sigma's `expand` modifier with a placeholder such as `%official_fakequest_hashes%` instead, as a real SIEM would use a lookup table. Simulated runs read the values from `simulation/placeholders.yml`. Real runs read the file `game/build.ps1` writes, through the `DVP_PLACEHOLDERS` environment variable. A placeholder with no values returns exit `2`, because an empty allowlist would flag every build.
+
 ### Rules that count events
 
 Use a [Sigma correlation](https://sigmahq.io/docs/meta/correlations.html) when one event isn't suspicious but a pattern is. The rule file holds two YAML documents: a base rule that selects events, then the correlation that counts them. The correlation holds the rule's ID, tags, and `x_game_test`. Only `event_count` and `value_count` with `gte` are supported, and anything else returns exit `2`.

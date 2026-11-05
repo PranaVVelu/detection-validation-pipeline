@@ -1,0 +1,28 @@
+title: Game Running From an Unofficial Build
+id: 9a4d2f68-1e7b-4c30-a8d5-6f0b3c7e2914
+status: experimental
+description: >
+  Detects the game running with a file hash that isn't on the official release list,
+  which suggests a bootleg or modified copy. Only checks files with the game's name.
+references:
+  - https://attack.mitre.org/techniques/T1554/
+author: PranaVVelu
+date: 2026-11-05
+tags:
+  - attack.persistence
+  - attack.t1554
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection:
+    Image|endswith: '\FakeQuest.exe'
+  filter_official:
+    Hashes|expand: '%official_fakequest_hashes%'
+  condition: selection and not filter_official
+falsepositives:
+  - A new official patch that hasn't been added to the list yet
+  - Legitimate mods that change the game's own file
+level: high
+x_game_threat: bootleg-copy
+x_game_test: game-bootleg-build

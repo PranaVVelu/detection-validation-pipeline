@@ -117,6 +117,23 @@ tests:
         TargetImage: C:\Games\FakeQuest\FakeQuest.exe
         GrantedAccess: "0x1000"
 
+  game-bootleg-build:
+    kind: game
+    technique: T1554
+    name: Run a modified copy of the game
+    category: process_creation
+    attack_events:
+      - Image: C:\Games\FakeQuest\bootleg\FakeQuest.exe
+        CommandLine: '"C:\Games\FakeQuest\bootleg\FakeQuest.exe" 2'
+        Hashes: SHA256=BAD0000000000000000000000000000000000000000000000000000000000000
+        ParentImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+    benign_events:
+      # The official build, with the same name. Only the hash tells them apart.
+      - Image: C:\Games\FakeQuest\FakeQuest.exe
+        CommandLine: '"C:\Games\FakeQuest\FakeQuest.exe" 2'
+        Hashes: SHA256=0FF1C1A1000000000000000000000000000000000000000000000000000000AA
+        ParentImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+
   license-key-guessing:
     kind: license
     technique: T1110
