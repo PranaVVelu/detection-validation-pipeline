@@ -44,6 +44,7 @@ sequenceDiagram
 | --- | --- | --- |
 | **Simulated telemetry first** | Runs on every PR in seconds, with nothing dangerous to contain | Doesn't prove a real sensor produces the telemetry |
 | **Real telemetry outside PRs** | Real logs catch what simulation can't, but executing tests must not be controllable from a PR | Real results arrive after a push, so they aren't a merge gate |
+| **Official hashes as Sigma placeholders** | The rule stays fixed while each build supplies its own hash, like a SIEM lookup table | The rule's result depends on a list outside the rule, so a stale list causes false alerts |
 | **Standard Sigma correlations, counted per scenario** | Rules stay portable to other Sigma tools, and benign events can't complete an attack's count | A real SIEM has no scenario labels, so mixed traffic behaves differently there |
 | **Tests on a fake game of the project's own** | Keeps the project clear of real cracks, cheats, and game licenses, and lets anyone run it | Rules need tuning before protecting a real game |
 | **Label real events by process tree** | Machines are noisy, and helper processes log first, so a time window would mislabel events | Only tests that start processes fit this approach so far |

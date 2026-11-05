@@ -1,0 +1,12 @@
+# A list that doesn't exist must not get a verdict, because the filter would match nothing.
+title: "Control: unknown placeholder"
+id: 00000000-0000-4000-8000-000000000017
+logsource: {category: process_creation, product: windows}
+tags: [attack.t1554]
+detection:
+  selection:
+    Image|endswith: '\FakeQuest.exe'
+  filter_official:
+    Hashes|expand: '%no_such_list%'
+  condition: selection and not filter_official
+x_game_test: game-bootleg-build

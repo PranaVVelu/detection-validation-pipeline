@@ -247,7 +247,9 @@ def wait_for_events(since: datetime, raw_path: Path, test: ValidationTest, run_i
 def describe_event(event: Dict[str, Any]) -> str:
     if event["_meta"].get("source") == "license_server":
         return f"{event.get('result')} {event.get('reason')} key={event.get('license_key_hash')} machine={event.get('machine_id')}"
-    return event.get("CommandLine") or event.get("ImageLoaded") or \
+    if event.get("CommandLine"):
+        return f"{event['CommandLine']} [{event.get('Hashes')}]"
+    return event.get("ImageLoaded") or \
         f"{event.get('SourceImage')} -> {event.get('TargetImage')} access={event.get('GrantedAccess')}"
 
 

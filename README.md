@@ -163,8 +163,9 @@ Real game tampering is the project's niche. These rules protect [FakeQuest](game
 | **License bypass** | A command writing a license server entry to the `hosts` file | Process creation | T1565.001 |
 | **Mod or crack injection** | The game loading a system-named DLL from outside the Windows folder | DLL load | T1574.001 |
 | **Memory tampering** | A process requesting write access to the game's memory | Process access | T1055 |
+| **Bootleg copy** | FakeQuest running with a hash that isn't on the official list | Process creation | T1554 |
 
-The tests are harmless on purpose. The license domain uses the reserved `.invalid` name, the planted DLL is an unmodified signed Windows file, and the memory tool closes its handle without reading or writing anything. **This project detects tampering, so it doesn't include cracks, cheats, or bypass techniques.**
+The tests are harmless on purpose. The license domain uses the reserved `.invalid` name, the planted DLL is an unmodified signed Windows file, the memory tool closes its handle without reading or writing anything, and the bootleg copy only has one word changed in its startup message. **This project detects tampering, so it doesn't include cracks, cheats, or bypass techniques.**
 
 ATT&CK describes attacks on organizations, so a player tampering with their own copy of a game only partly fits. Each rule keeps the closest technique and adds its own `x_game_threat` label.
 
@@ -184,7 +185,7 @@ Both rules count different values, not attempts. Two negative controls show why:
 1. ~~Validate rules against simulated attacks in CI~~
 2. ~~Validate against real Windows logs, and add game tampering rules~~
 3. ~~Detect license server abuse by counting events over time~~
-4. **Bootleg copies:** spot a game build that doesn't match the official release
+4. ~~Spot bootleg copies: game builds that don't match the official release~~
 5. **Evasion testing:** try harmless variations of each attack, and score which ones get past each rule
 6. **False-positive testing:** measure each rule's noise against realistic normal activity
 7. **Real SIEM:** run the rules in a real SIEM as well as the mock
@@ -193,10 +194,11 @@ Both rules count different values, not attempts. Two negative controls show why:
 ## Scope and limitations
 
 - **License traffic is scripted.** The server and its logs are real, but the requests come from test scripts on one machine, so every request has the same address. Real thresholds need tuning against real player traffic, and an attacker spreading guesses across many addresses wouldn't trigger the guessing rule.
-- **Coverage is small.** The catalog has two Atomic tests, three game tests, and two license tests, and KQL rules can only use `DeviceProcessEvents`.
+- **Coverage is small.** The catalog has two Atomic tests, four game tests, and two license tests, and KQL rules can only use `DeviceProcessEvents`.
+- **The bootleg rule goes by file name.** It only checks files named `FakeQuest.exe`, so a renamed copy gets past it. Hashes also only help when the official list is complete, so a missing patch would look like a bootleg.
 - **Game rules are tied to FakeQuest.** Protecting a real game means changing the game name in each rule, and the access values and DLL names need tuning for that game.
 - **A real pass applies to one environment.** It covers a clean Windows Server VM with a minimal Sysmon configuration, not every Windows setup, and it doesn't measure false positives on real user activity.
-- **The rule engines are subsets.** Sigma covers the common modifiers and conditions, plus `event_count` and `value_count` correlations, with no keyword searches. KQL covers single-table filters only. Anything unsupported returns exit `2`, never a guessed verdict.
+- **The rule engines are subsets.** Sigma covers the common modifiers, conditions, and `expand` placeholders, plus `event_count` and `value_count` correlations, with no keyword searches. KQL covers single-table filters only. Anything unsupported returns exit `2`, never a guessed verdict.
 - **Mock matching is approximate.** `has` approximates Kusto's term index, and regexes run on Python's engine rather than RE2.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design decisions and threat model.

@@ -16,9 +16,11 @@ from dvp.sysmon import normalize_percent_signs
 PASS, FAIL, ERROR = 0, 1, 2
 REPO_RULES = sorted((REPO_ROOT / "detections").rglob("*.*"))
 FAILING_CONTROLS = ["fail_too_narrow.yml", "fail_too_broad.yml", "fail_wrong_technique.yml", "fail_too_broad.kql",
-                    "fail_game_dll_any_path.yml", "fail_license_counts_retries.yml", "fail_license_counts_reinstalls.yml"]
+                    "fail_game_dll_any_path.yml", "fail_license_counts_retries.yml", "fail_license_counts_reinstalls.yml",
+                    "fail_bootleg_any_build.yml"]
 ERROR_CONTROLS = ["error_unsupported_modifier.yml", "error_unknown_atomic.yml",
-                  "error_summarize.kql", "error_unknown_column.kql", "error_unsupported_correlation.yml"]
+                  "error_summarize.kql", "error_unknown_column.kql", "error_unsupported_correlation.yml",
+                  "error_unknown_placeholder.yml"]
 
 
 def run_offline(rule: Path, tmp_path: Path, run_id: str = "test-run"):
@@ -62,6 +64,7 @@ def test_each_control_fails_for_the_expected_reason(tmp_path):
         "fail_game_dll_any_path.yml": "No false positive",
         "fail_license_counts_retries.yml": "No false positive",
         "fail_license_counts_reinstalls.yml": "No false positive",
+        "fail_bootleg_any_build.yml": "No false positive",
     }
     for name, failing_check in expected.items():
         run_offline(FIXTURES / name, tmp_path)
