@@ -23,6 +23,11 @@ class AtomicTest:
     benign_events: List[Dict[str, Any]]
     upstream_commit: str
 
+    @property
+    def command_marker(self) -> str:
+        """The fixed start of the upstream command, before any input arguments."""
+        return self.upstream_command.split("#{")[0].strip()
+
 
 def load_atomic_test(guid: str, catalog_path: Path = DEFAULT_CATALOG) -> AtomicTest:
     """Return one catalog entry, keyed by Atomic's stable GUID (test numbers shift)."""

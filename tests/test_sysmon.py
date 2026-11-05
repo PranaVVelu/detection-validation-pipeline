@@ -8,7 +8,7 @@ from conftest import FIXTURES, REPO_ROOT
 from dvp.catalog import load_atomic_test
 from dvp.errors import PipelineError
 from dvp.rules import load_rule
-from dvp.sysmon import parse_event_xml, parse_export, select_process_tree
+from dvp.sysmon import parse_event_xml, parse_export, select_process_tree, select_test_execution
 
 RAW = (FIXTURES.parent / "sysmon_events.xml").read_text(encoding="utf-8").splitlines()
 RULE = REPO_ROOT / "detections/sigma/proc_creation_win_powershell_encoded_command.yml"
@@ -38,7 +38,26 @@ def test_invalid_xml_is_a_pipeline_error():
 
 def test_process_tree_follows_guids_and_excludes_wrapper():
     selected = select_process_tree(parse_export(RAW), 100, include_root=False)
+    assert command_lines(selected) == [
+        '"C:\\Windows\\system32\\whoami.exe"', "cmd.exe /c powershell.exe -e  AAAA", "powershell.exe -e  AAAA",
+    ]
+
+
+def test_test_execution_excludes_invoke_atomic_helpers():
+    selected = select_test_execution(parse_export(RAW), 100, TEST.command_marker)
     assert command_lines(selected) == ["cmd.exe /c powershell.exe -e  AAAA", "powershell.exe -e  AAAA"]
+
+
+def test_helpers_alone_do_not_count_as_the_test_running():
+    """Regression: helpers log first, which ended collection before the test's events arrived."""
+    without_test = [event for event in parse_export(RAW) if "-e  AAAA" not in event["CommandLine"]]
+    assert select_test_execution(without_test, 100, TEST.command_marker) == []
+
+
+def test_marker_stops_before_input_arguments():
+    assert TEST.command_marker == "powershell.exe -e"
+    other = load_atomic_test("d0eb3597-a1b3-4d65-b33b-2cda8d397f20")
+    assert other.command_marker == "%LOCALAPPDATA:~-3,1%md /c echo"
 
 
 def test_reused_pid_does_not_pull_in_the_earlier_process():

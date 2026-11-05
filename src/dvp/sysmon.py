@@ -45,23 +45,41 @@ def parse_export(lines: Iterable[str]) -> List[Dict[str, Any]]:
     return [event for event in events if event["EventID"] == PROCESS_CREATE_EVENT_ID]
 
 
-def select_process_tree(events: List[Dict[str, Any]], root_pid: int, include_root: bool) -> List[Dict[str, Any]]:
-    """Return the events for a process and its descendants.
+def _walk_tree(events: List[Dict[str, Any]], root: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return an event and its descendants, linked by ProcessGuid.
 
-    Windows reuses process IDs, so only the root is found by PID. Descendants are
-    linked through Sysmon's ProcessGuid, which is unique to each process.
+    Windows reuses process IDs, but each process has a unique ProcessGuid.
     """
-    roots = [event for event in events if str(event.get("ProcessId")) == str(root_pid)]
-    if not roots:
-        return []
-
-    tree: Set[str] = {roots[-1]["ProcessGuid"]}
-    selected = [roots[-1]] if include_root else []
+    tree: Set[str] = {root["ProcessGuid"]}
+    selected = [root]
     for event in events:
         if event.get("ParentProcessGuid") in tree and event.get("ProcessGuid") not in tree:
             tree.add(event["ProcessGuid"])
             selected.append(event)
     return selected
+
+
+def select_process_tree(events: List[Dict[str, Any]], root_pid: int, include_root: bool) -> List[Dict[str, Any]]:
+    """Return the events for a process and its descendants, using the latest process with that ID."""
+    roots = [event for event in events if str(event.get("ProcessId")) == str(root_pid)]
+    if not roots:
+        return []
+    selected = _walk_tree(events, roots[-1])
+    return selected if include_root else selected[1:]
+
+
+def select_test_execution(events: List[Dict[str, Any]], root_pid: int, marker: str) -> List[Dict[str, Any]]:
+    """Return only the process running the test's command, and its descendants.
+
+    Invoke-AtomicTest also starts helpers such as whoami.exe for its own logging.
+    Those aren't attack behavior, and they log first, so seeing them doesn't mean
+    the test's own events have been written yet.
+    """
+    wrapper_tree = select_process_tree(events, root_pid, include_root=False)
+    for event in wrapper_tree:
+        if marker in event.get("CommandLine", ""):
+            return _walk_tree(events, event)
+    return []
 
 
 def to_pipeline_event(raw: Dict[str, Any], test: AtomicTest, run_id: str, scenario: str) -> Dict[str, Any]:

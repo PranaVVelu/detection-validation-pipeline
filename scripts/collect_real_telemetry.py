@@ -29,11 +29,12 @@ sys.path.insert(0, str(SCRIPTS.parent / "src"))
 from dvp.catalog import DEFAULT_CATALOG, AtomicTest, load_atomic_test  # noqa: E402
 from dvp.errors import PipelineError  # noqa: E402
 from dvp.rules import load_rule  # noqa: E402
-from dvp.sysmon import parse_export, select_process_tree, to_pipeline_event  # noqa: E402
+from dvp.sysmon import parse_export, select_process_tree, select_test_execution, to_pipeline_event  # noqa: E402
 
 ATOMIC_URL = "https://raw.githubusercontent.com/redcanaryco/atomic-red-team/{commit}/atomics/{technique}/{technique}.yaml"
 BENIGN_TIMEOUT_SECONDS = 15
 SYSMON_WAIT_SECONDS = 45
+SYSMON_SETTLE_SECONDS = 5
 POWERSHELL = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]
 
 
@@ -100,9 +101,9 @@ def export_sysmon(since: datetime, raw_path: Path) -> List[Dict[str, Any]]:
 
 def label_events(raw_events: List[Dict[str, Any]], test: AtomicTest, run_id: str,
                  atomic_pid: int, benign_pids: List[int]) -> List[Dict[str, Any]]:
-    """Label each tree. The atomic's root is our wrapper script, so it's excluded."""
+    """Label the test's own processes as attack, and each baseline process tree as benign."""
     labeled = [to_pipeline_event(event, test, run_id, "attack")
-               for event in select_process_tree(raw_events, atomic_pid, include_root=False)]
+               for event in select_test_execution(raw_events, atomic_pid, test.command_marker)]
     for pid in benign_pids:
         labeled += [to_pipeline_event(event, test, run_id, "benign")
                     for event in select_process_tree(raw_events, pid, include_root=True)]
@@ -119,10 +120,13 @@ def wait_for_events(since: datetime, raw_path: Path, test: AtomicTest, run_id: s
         labeled = label_events(raw_events, test, run_id, atomic_pid, benign_pids)
         attack = [event for event in labeled if event["_meta"]["scenario"] == "attack"]
         if attack and all(str(pid) in seen for pid in benign_pids):
-            return labeled
+            # The test's process has logged, so give its children time to log too.
+            time.sleep(SYSMON_SETTLE_SECONDS)
+            return label_events(export_sysmon(since, raw_path), test, run_id, atomic_pid, benign_pids)
         if time.monotonic() >= deadline:
             raise PipelineError(
-                f"Sysmon logged {len(attack)} attack event(s), and these benign processes are missing: "
+                f"Sysmon logged {len(attack)} event(s) for command {test.command_marker!r}, "
+                f"and these benign processes are missing: "
                 f"{[pid for pid in benign_pids if str(pid) not in seen]}"
             )
         time.sleep(3)
