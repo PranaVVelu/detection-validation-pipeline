@@ -1,0 +1,49 @@
+title: License Activation With a Real Key
+id: 2a7d94e6-c1b8-4f35-9e02-6b3f8d1a7c54
+name: license_known_key_activation
+status: experimental
+description: A license activation attempt that used a key that exists, whether or not it succeeded.
+author: PranaVVelu
+date: 2026-11-05
+logsource:
+  category: license_activation
+  product: fakequest
+detection:
+  selection:
+    event: activation
+  filter_unknown:
+    reason: unknown_key
+  condition: selection and not filter_unknown
+falsepositives:
+  - Every normal activation matches, so this is only useful when counted
+level: informational
+---
+title: One License Key Activated on Too Many Machines
+id: e5c28b70-3d1f-4a96-8c47-1f9e0b6d2a83
+status: experimental
+description: >
+  Detects one license key being used from more machines than it has seats, which
+  suggests the key has been shared or leaked. It counts different machines rather
+  than activations, so a player reinstalling on their own PCs doesn't trigger it.
+references:
+  - https://attack.mitre.org/techniques/T1078/
+author: PranaVVelu
+date: 2026-11-05
+tags:
+  - attack.persistence
+  - attack.t1078
+correlation:
+  type: value_count
+  rules:
+    - license_known_key_activation
+  group-by:
+    - license_key_hash
+  timespan: 1h
+  condition:
+    gte: 3
+    field: machine_id
+falsepositives:
+  - A player replacing their PCs, or a machine ID that changes after a hardware upgrade
+level: high
+x_game_threat: license-key-sharing
+x_game_test: license-key-sharing

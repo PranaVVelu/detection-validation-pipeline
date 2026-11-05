@@ -44,6 +44,7 @@ sequenceDiagram
 | --- | --- | --- |
 | **Simulated telemetry first** | Runs on every PR in seconds, with nothing dangerous to contain | Doesn't prove a real sensor produces the telemetry |
 | **Real telemetry outside PRs** | Real logs catch what simulation can't, but executing tests must not be controllable from a PR | Real results arrive after a push, so they aren't a merge gate |
+| **Standard Sigma correlations, counted per scenario** | Rules stay portable to other Sigma tools, and benign events can't complete an attack's count | A real SIEM has no scenario labels, so mixed traffic behaves differently there |
 | **Tests on a fake game of the project's own** | Keeps the project clear of real cracks, cheats, and game licenses, and lets anyone run it | Rules need tuning before protecting a real game |
 | **Label real events by process tree** | Machines are noisy, and helper processes log first, so a time window would mislabel events | Only tests that start processes fit this approach so far |
 | **Telemetry modeled on the Atomic test, not the rule** | Telemetry fitted to the rule would make every test pass. `upstream_command` and a unit test anchor the catalog to the real test | Adding a test means modeling its events by hand |

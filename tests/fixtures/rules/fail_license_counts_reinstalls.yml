@@ -1,0 +1,19 @@
+# Counts activations rather than different machines, so reinstalling sets it off.
+title: "Negative control: base rule"
+id: 00000000-0000-4000-8000-000000000012
+name: control_activation
+logsource: {category: license_activation, product: fakequest}
+detection:
+  selection: {event: activation}
+  condition: selection
+---
+title: "Negative control: activations of one key"
+id: 00000000-0000-4000-8000-000000000013
+tags: [attack.t1078]
+correlation:
+  type: event_count
+  rules: [control_activation]
+  group-by: [license_key_hash]
+  timespan: 1h
+  condition: {gte: 3}
+x_game_test: license-key-sharing

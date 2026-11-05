@@ -92,7 +92,7 @@ The last command fails on purpose.
 detections/
   sigma/                            Sigma rules (*.yml, *.yaml)
   kql/                              KQL rules (*.kql)
-game/                               FakeQuest, its test tool, and the tampering scenarios
+game/                               FakeQuest, its test tool, the license server, and the abuse scenarios
 simulation/catalog.yml              Test telemetry and the benign baseline
 telemetry/sysmon-config.xml         Sysmon configuration for real runs
 scripts/
@@ -168,12 +168,35 @@ The tests are harmless on purpose. The license domain uses the reserved `.invali
 
 ATT&CK describes attacks on organizations, so a player tampering with their own copy of a game only partly fits. Each rule keeps the closest technique and adds its own `x_game_threat` label.
 
+### License server abuse
+
+Some abuse only shows up as a pattern, so these rules count activity over time using standard [Sigma correlations](https://sigmahq.io/docs/meta/correlations.html). Their logs come from [a small license server](game/license_server.py) that only listens on the local machine, with demo keys that unlock nothing. It logs keys as hashes, so the logs don't hold working keys.
+
+| Threat | Rule watches for | Must ignore | ATT&CK |
+| --- | --- | --- | --- |
+| **Key guessing** | 10 or more different unknown keys from one address in 5 minutes | A player retrying the same mistyped key | T1110 |
+| **Key sharing** | One key used on 3 or more machines in an hour, with 2 seats allowed | A player reinstalling on their two PCs | T1078 |
+
+Both rules count different values, not attempts. Two negative controls show why: the same rules counting attempts fire on those normal players, and the pipeline fails them.
+
+## Roadmap
+
+1. ~~Validate rules against simulated attacks in CI~~
+2. ~~Validate against real Windows logs, and add game tampering rules~~
+3. ~~Detect license server abuse by counting events over time~~
+4. **Bootleg copies:** spot a game build that doesn't match the official release
+5. **Evasion testing:** try harmless variations of each attack, and score which ones get past each rule
+6. **False-positive testing:** measure each rule's noise against realistic normal activity
+7. **Real SIEM:** run the rules in a real SIEM as well as the mock
+8. **Public dashboard:** publish coverage, the latest results, and known gaps
+
 ## Scope and limitations
 
-- **Coverage is small.** The catalog has two Atomic tests and three game tests, and KQL rules can only use `DeviceProcessEvents`.
+- **License traffic is scripted.** The server and its logs are real, but the requests come from test scripts on one machine, so every request has the same address. Real thresholds need tuning against real player traffic, and an attacker spreading guesses across many addresses wouldn't trigger the guessing rule.
+- **Coverage is small.** The catalog has two Atomic tests, three game tests, and two license tests, and KQL rules can only use `DeviceProcessEvents`.
 - **Game rules are tied to FakeQuest.** Protecting a real game means changing the game name in each rule, and the access values and DLL names need tuning for that game.
 - **A real pass applies to one environment.** It covers a clean Windows Server VM with a minimal Sysmon configuration, not every Windows setup, and it doesn't measure false positives on real user activity.
-- **The rule engines are subsets.** Sigma covers the common modifiers and conditions, with no aggregations or keyword searches. KQL covers single-table filters only. Anything unsupported returns exit `2`, never a guessed verdict.
+- **The rule engines are subsets.** Sigma covers the common modifiers and conditions, plus `event_count` and `value_count` correlations, with no keyword searches. KQL covers single-table filters only. Anything unsupported returns exit `2`, never a guessed verdict.
 - **Mock matching is approximate.** `has` approximates Kusto's term index, and regexes run on Python's engine rather than RE2.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design decisions and threat model.

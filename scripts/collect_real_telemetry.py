@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Run a rule's validation test on this machine and collect the real Sysmon logs.
+"""Run a rule's validation test on this machine and collect the real logs.
 
 This EXECUTES the test, so it belongs only on a disposable Windows machine with
-Sysmon installed. It writes the same JSONL format as simulate_atomic.py, so the
+Sysmon installed. License tests only need Python, because their logs come from a
+local license server. It writes the same JSONL format as simulate_atomic.py, so the
 later pipeline stages don't change.
 
 Exit codes: 0 = success, 2 = pipeline error (no trustworthy telemetry).
@@ -17,6 +18,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
@@ -25,6 +27,7 @@ import yaml
 
 SCRIPTS = Path(__file__).resolve().parent
 GAME_DIR = SCRIPTS.parent / "game"
+LICENSE_SERVER = GAME_DIR / "license_server.py"
 sys.path.insert(0, str(SCRIPTS.parent / "src"))
 
 from dvp.catalog import DEFAULT_CATALOG, ValidationTest, load_test  # noqa: E402
@@ -139,6 +142,54 @@ def label_game_events(raw_events: List[Dict[str, Any]], test: ValidationTest, ru
     return labeled
 
 
+def run_license_scenario(test: ValidationTest, scenario: str, log_path: Path) -> None:
+    """Run one side of a license test against its own server, which writes the log."""
+    server = subprocess.Popen([sys.executable, str(LICENSE_SERVER), "--log", str(log_path)],
+                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
+    try:
+        url = (server.stdout.readline() if server.stdout else "").strip()
+        if not url:
+            raise PipelineError(f"the license server didn't start for {test.guid}")
+        client = subprocess.run([sys.executable, str(GAME_DIR / "scenarios" / f"{test.guid}.py"),
+                                 "--scenario", scenario, "--url", url], stdin=subprocess.DEVNULL, timeout=120, check=False)
+        if client.returncode != 0:
+            raise PipelineError(f"Scenario {scenario} of {test.guid} failed with exit code {client.returncode}")
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+
+
+def label_license_events(lines: List[str], test: ValidationTest, run_id: str, scenario: str) -> List[Dict[str, Any]]:
+    """Each scenario has its own server and log, so every line in the log belongs to it."""
+    return [{
+        **json.loads(line),
+        "_meta": {
+            "event_id": str(uuid.uuid4()),
+            "run_id": run_id,
+            "scenario": scenario,
+            "category": test.category,
+            "test_id": test.guid,
+            "technique": test.technique,
+            "source": "license_server",
+        },
+    } for line in lines if line.strip()]
+
+
+def collect_license_events(test: ValidationTest, run_id: str, raw_path: Path, workdir: Path) -> List[Dict[str, Any]]:
+    events: List[Dict[str, Any]] = []
+    raw_lines: List[str] = []
+    for scenario in ("benign", "attack"):
+        log_path = workdir / f"{scenario}.jsonl"
+        run_license_scenario(test, scenario, log_path)
+        lines = log_path.read_text(encoding="utf-8").splitlines()
+        raw_lines += lines
+        events += label_license_events(lines, test, run_id, scenario)
+    raw_path.write_text("\n".join(raw_lines) + "\n", encoding="utf-8")
+    if not has_both_scenarios(events, test.category):
+        raise PipelineError(f"The license server didn't log {test.category} events for both scenarios of {test.guid}")
+    return events
+
+
 def has_both_scenarios(events: List[Dict[str, Any]], category: str) -> bool:
     """Both sides must have logged the event type the rule reads, or the verdict is hollow."""
     relevant = {event["_meta"]["scenario"] for event in events if event["_meta"]["category"] == category}
@@ -193,6 +244,13 @@ def wait_for_events(since: datetime, raw_path: Path, test: ValidationTest, run_i
         time.sleep(3)
 
 
+def describe_event(event: Dict[str, Any]) -> str:
+    if event["_meta"].get("source") == "license_server":
+        return f"{event.get('result')} {event.get('reason')} key={event.get('license_key_hash')} machine={event.get('machine_id')}"
+    return event.get("CommandLine") or event.get("ImageLoaded") or \
+        f"{event.get('SourceImage')} -> {event.get('TargetImage')} access={event.get('GrantedAccess')}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--rule", type=Path, required=True)
@@ -210,7 +268,9 @@ def main() -> int:
 
         with tempfile.TemporaryDirectory() as temp:
             workdir = Path(temp)
-            if test.kind == "game":
+            if test.kind == "license":
+                events = collect_license_events(test, args.run_id, args.raw_out.resolve(), workdir)
+            elif test.kind == "game":
                 benign_pid = run_game_scenario(test, "benign", workdir)
                 attack_pid = run_game_scenario(test, "attack", workdir)
                 events = wait_for_game_events(since, args.raw_out.resolve(), test, args.run_id, attack_pid, benign_pid)
@@ -229,9 +289,7 @@ def main() -> int:
 
     print(f"Collected {len(events)} real event(s) for {test.technique} '{test.name}':")
     for event in events:
-        detail = event.get("CommandLine") or event.get("ImageLoaded") or \
-            f"{event.get('SourceImage')} -> {event.get('TargetImage')} access={event.get('GrantedAccess')}"
-        print(f"  [{event['_meta']['scenario']}] {event['_meta']['category']} {event.get('Image', '')}: {detail}")
+        print(f"  [{event['_meta']['scenario']}] {event['_meta']['category']} {event.get('Image', '')}: {describe_event(event)}")
     return 0
 
 

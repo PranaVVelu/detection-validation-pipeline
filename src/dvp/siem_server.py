@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, Tuple
 from urllib.parse import parse_qs, urlparse
 
-from dvp.errors import RuleError
+from dvp.errors import PipelineError
 from dvp.rules import parse_rule
 from dvp.siem import SiemStore
 
@@ -73,7 +73,7 @@ def build_server(host: str, port: int, store: SiemStore) -> ThreadingHTTPServer:
                     self._respond(202, {"ingested": store.ingest(run_id, body["events"])})
                 else:
                     self._respond(404, {"error": "not found"})
-            except RuleError as exc:
+            except PipelineError as exc:
                 self._respond(422, {"error": str(exc)})
             except (KeyError, TypeError, ValueError) as exc:
                 self._respond(400, {"error": f"bad request: {exc}"})

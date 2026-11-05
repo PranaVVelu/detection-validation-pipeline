@@ -81,13 +81,13 @@ jobs:
       - name: Run the test and collect Sysmon logs
         env:
           ATOMIC_MODULES: ${{ runner.temp }}\psmodules
-        run: python scripts/collect_real_telemetry.py --rule "$env:RULE" --run-id "$env:RUN_ID" --out reports/events.jsonl --raw-out reports/sysmon-raw.xml
+        run: python scripts/collect_real_telemetry.py --rule "$env:RULE" --run-id "$env:RUN_ID" --out reports/events.jsonl --raw-out reports/raw-logs.txt
 
       - name: Evaluate the rule against the real logs
         run: python scripts/ship_events.py --rule "$env:RULE" --events reports/events.jsonl --run-id "$env:RUN_ID" --alerts-out reports/alerts.json
 
       - name: Validate the alert
-        run: python scripts/validate_alert.py --rule "$env:RULE" --run-id "$env:RUN_ID" --alerts-file reports/alerts.json --telemetry "Real Sysmon" --report reports/report.json --summary reports/summary.md
+        run: python scripts/validate_alert.py --rule "$env:RULE" --run-id "$env:RUN_ID" --alerts-file reports/alerts.json --telemetry "Real" --report reports/report.json --summary reports/summary.md
 
       - name: Publish the job summary
         if: always()

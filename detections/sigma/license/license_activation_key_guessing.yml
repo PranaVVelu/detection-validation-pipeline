@@ -1,0 +1,49 @@
+title: Failed License Activation With an Unknown Key
+id: 6e0c3a91-4f7d-4b26-8a15-d2c97b3e1f40
+name: license_unknown_key_failure
+status: experimental
+description: A license activation that failed because the key doesn't exist.
+author: PranaVVelu
+date: 2026-11-05
+logsource:
+  category: license_activation
+  product: fakequest
+detection:
+  selection:
+    event: activation
+    result: failure
+    reason: unknown_key
+  condition: selection
+falsepositives:
+  - Players mistyping their key
+level: low
+---
+title: License Key Guessing From One Address
+id: b83f17d2-9c64-4e0a-b5f1-7a2d6e4c9038
+status: experimental
+description: >
+  Detects one address trying many different license keys that don't exist. It counts
+  different keys rather than failures, so a player retrying the same mistyped key
+  doesn't trigger it.
+references:
+  - https://attack.mitre.org/techniques/T1110/
+author: PranaVVelu
+date: 2026-11-05
+tags:
+  - attack.credential-access
+  - attack.t1110
+correlation:
+  type: value_count
+  rules:
+    - license_unknown_key_failure
+  group-by:
+    - client_ip
+  timespan: 5m
+  condition:
+    gte: 10
+    field: license_key_hash
+falsepositives:
+  - Many players sharing one public address, such as a school or LAN event
+level: high
+x_game_threat: license-key-guessing
+x_game_test: license-key-guessing

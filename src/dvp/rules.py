@@ -5,10 +5,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Mapping
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import yaml
 
+from dvp.correlation import Correlation, parse_correlation
 from dvp.errors import RuleError
 from dvp.kql_engine import compile_kql
 from dvp.sigma_engine import compile_sigma
@@ -32,6 +33,7 @@ class Rule:
     test_id: str
     category: str
     matcher: Callable[[Mapping[str, Any]], bool]
+    correlation: Optional[Correlation] = None
 
     def matches(self, event: Mapping[str, Any]) -> bool:
         return event.get("_meta", {}).get("category") == self.category and self.matcher(event)
@@ -49,14 +51,31 @@ def _sigma_test_id(doc: Mapping[str, Any], source: str) -> str:
     return str(doc.get("x_game_test") or _require(doc, "x_atomic_test", source))
 
 
-def _parse_sigma(text: str, source: str) -> Rule:
+def _sigma_documents(text: str, source: str) -> Tuple[Mapping[str, Any], Optional[Correlation]]:
+    """Split a rule file into the document describing the rule, and any correlation.
+
+    A correlation rule is two YAML documents: a base rule that selects events, then
+    the correlation that counts them. The correlation carries the rule's identity,
+    so the logsource and detection are merged in from the base rule.
+    """
     try:
-        doc = yaml.safe_load(text)
+        docs = list(yaml.safe_load_all(text))
     except yaml.YAMLError as exc:
         raise RuleError(f"{source}: invalid YAML: {exc}") from exc
-    if not isinstance(doc, Mapping):
-        raise RuleError(f"{source}: expected a YAML mapping")
+    if not docs or len(docs) > 2 or not all(isinstance(doc, Mapping) for doc in docs):
+        raise RuleError(f"{source}: expected one YAML mapping, or a base rule and a correlation")
+    if len(docs) == 1:
+        return docs[0], None
 
+    base, outer = docs
+    correlation = parse_correlation(outer.get("correlation"))
+    if correlation.base_rule != base.get("name"):
+        raise RuleError(f"{source}: correlation references unknown rule {correlation.base_rule!r}")
+    return {**outer, "logsource": base.get("logsource"), "detection": base.get("detection")}, correlation
+
+
+def _parse_sigma(text: str, source: str) -> Rule:
+    doc, correlation = _sigma_documents(text, source)
     tags = [_SIGMA_TECHNIQUE_TAG.match(str(tag)) for tag in doc.get("tags") or []]
     logsource = doc.get("logsource") or {}
     return Rule(
@@ -67,6 +86,7 @@ def _parse_sigma(text: str, source: str) -> Rule:
         test_id=_sigma_test_id(doc, source),
         category=_require(logsource, "category", f"{source} logsource"),
         matcher=compile_sigma(doc.get("detection")),
+        correlation=correlation,
     )
 
 

@@ -12,8 +12,9 @@ import time
 import uuid
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Mapping, Optional
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
+from dvp.correlation import CorrelationWindow
 from dvp.rules import Rule
 
 
@@ -25,6 +26,7 @@ class SiemStore:
         self._rules: Dict[str, Dict[str, Rule]] = defaultdict(dict)
         self._event_counts: Dict[str, Counter] = defaultdict(Counter)
         self._alerts: List[Dict[str, Any]] = []
+        self._windows: Dict[Tuple[str, str, str], CorrelationWindow] = {}
 
     def load_rule(self, run_id: str, rule: Rule) -> None:
         with self._lock:
@@ -40,9 +42,20 @@ class SiemStore:
                 self._event_counts[run_id][meta.get("scenario", "unknown")] += 1
                 ingested += 1
                 for rule in rules:
-                    if rule.matches(event):
+                    if not rule.matches(event):
+                        continue
+                    if rule.correlation is None:
                         self._alerts.append(self._build_alert(run_id, rule, event))
+                    else:
+                        details = self._window(run_id, rule, meta).observe(event)
+                        if details:
+                            self._alerts.append({**self._build_alert(run_id, rule, event), "correlation": details})
         return ingested
+
+    def _window(self, run_id: str, rule: Rule, meta: Mapping[str, Any]) -> CorrelationWindow:
+        """Count each scenario apart, so benign events can't complete an attack's count, or the reverse."""
+        key = (run_id, rule.id, str(meta.get("scenario")))
+        return self._windows.setdefault(key, CorrelationWindow(rule.correlation))
 
     def _build_alert(self, run_id: str, rule: Rule, event: Mapping[str, Any]) -> Dict[str, Any]:
         meta = event["_meta"]
