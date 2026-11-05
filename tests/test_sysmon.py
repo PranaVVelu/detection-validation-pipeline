@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-from collect_real_telemetry import label_events, verify_upstream
+from collect_real_telemetry import describe_processes, label_events, verify_upstream
 from conftest import FIXTURES, REPO_ROOT
 from dvp.catalog import load_atomic_test
 from dvp.errors import PipelineError
@@ -101,3 +101,9 @@ def test_changed_upstream_command_is_refused():
 def test_missing_upstream_test_is_refused():
     with pytest.raises(PipelineError, match="is not in"):
         verify_upstream(yaml.safe_dump({"atomic_tests": []}), TEST)
+
+
+def test_process_listing_shows_commands_for_diagnosis():
+    listing = describe_processes(parse_export(RAW))
+    assert "powershell.exe -e  RUNNERNOISE" in listing
+    assert listing.startswith(f"Sysmon recorded {len(parse_export(RAW))} process(es):")

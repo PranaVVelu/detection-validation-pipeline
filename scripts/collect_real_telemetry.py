@@ -110,6 +110,14 @@ def label_events(raw_events: List[Dict[str, Any]], test: AtomicTest, run_id: str
     return labeled
 
 
+def describe_processes(raw_events: List[Dict[str, Any]]) -> str:
+    """List everything Sysmon recorded, so a missing command can be diagnosed from the job log."""
+    lines = [f"Sysmon recorded {len(raw_events)} process(es):"]
+    lines += [f"  pid={event.get('ProcessId')} parent={event.get('ParentProcessId')} "
+              f"{event.get('Image')}: {event.get('CommandLine')}" for event in raw_events]
+    return "\n".join(lines)
+
+
 def wait_for_events(since: datetime, raw_path: Path, test: AtomicTest, run_id: str,
                     atomic_pid: int, benign_pids: List[int]) -> List[Dict[str, Any]]:
     """Poll until every tree has logged, because Sysmon writes asynchronously."""
@@ -124,6 +132,7 @@ def wait_for_events(since: datetime, raw_path: Path, test: AtomicTest, run_id: s
             time.sleep(SYSMON_SETTLE_SECONDS)
             return label_events(export_sysmon(since, raw_path), test, run_id, atomic_pid, benign_pids)
         if time.monotonic() >= deadline:
+            print(describe_processes(raw_events), file=sys.stderr)
             raise PipelineError(
                 f"Sysmon logged {len(attack)} event(s) for command {test.command_marker!r}, "
                 f"and these benign processes are missing: "
