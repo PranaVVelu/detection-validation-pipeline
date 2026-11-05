@@ -132,13 +132,28 @@ DeviceProcessEvents
 
 If the test isn't in [simulation/catalog.yml](simulation/catalog.yml) yet, add it there too.
 
+## Simulated and real telemetry
+
+The pipeline tests rules against two kinds of telemetry:
+
+| | Simulated | Real |
+| --- | --- | --- |
+| **Workflow** | `detect-test.yml` | `real-telemetry.yml` |
+| **Runs on** | Every PR | Pushes to `main`, `telemetry/**` branches, and manual runs |
+| **Telemetry** | Events modeled on each Atomic test | Sysmon logs from running the test with `Invoke-AtomicTest` on a disposable Windows VM |
+| **Purpose** | Fast, safe merge gate | Evidence that the rules work on what Windows actually logs |
+
+Real tests never run on PRs, because code from a PR must not choose what gets executed. Each real run keeps its raw Sysmon logs as a downloadable artifact.
+
+Real machines are noisy, so events are labeled by process tree instead of by time: only the process running the test's own command, and its children, count as attack events. Benign commands from the baseline run for real as well.
+
+Real logs have already changed this project. The exported Sysmon logs showed `%VAR%` as `%%VAR%%` in a command line, so the simulated events now match what Windows logged.
+
 ## Scope and limitations
 
-This pipeline **simulates** telemetry: it never runs an attack. That makes it fast, safe, and free to run on every PR. It also sets a clear limit on what a PASS means:
-
-- **A PASS proves the rule's logic is right for the modeled telemetry.** It doesn't prove a real sensor emits that telemetry in your environment. Moving to real execution is [Phase 2 of the guide](docs/IMPLEMENTATION_GUIDE.md#phase-2-real-execution-with-invoke-atomic).
+- **Coverage is small.** Only process creation is covered (`DeviceProcessEvents` for KQL), with two Atomic tests in the catalog so far.
+- **A real pass applies to one environment.** It covers a clean Windows Server VM with a minimal Sysmon configuration, not every Windows setup, and it doesn't measure false positives on real user activity.
 - **The rule engines are subsets.** Sigma covers the common modifiers and conditions, with no aggregations or keyword searches. KQL covers single-table filters only. Anything unsupported returns exit `2`, never a guessed verdict.
 - **Mock matching is approximate.** `has` approximates Kusto's term index, and regexes run on Python's engine rather than RE2.
-- **Coverage is process creation only** (`DeviceProcessEvents` for KQL), with two Atomic tests in the catalog so far.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design decisions and threat model.

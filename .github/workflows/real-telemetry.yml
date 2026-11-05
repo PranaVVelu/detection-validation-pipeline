@@ -1,0 +1,103 @@
+name: Real Telemetry Validation
+
+# This workflow EXECUTES Atomic Red Team tests, so it never runs on pull requests:
+# code from a PR must not get to choose what runs. Fork PRs can't trigger a push
+# here, so "telemetry/**" is limited to people with write access.
+on:
+  push:
+    branches: [main, "telemetry/**"]
+    paths:
+      - "detections/**"
+      - "simulation/**"
+      - "src/**"
+      - "scripts/**"
+      - "telemetry/**"
+      - "requirements*.txt"
+      - ".github/workflows/real-telemetry.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    name: Select rules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: select
+        run: python3 scripts/discover_rules.py --all
+
+  validate:
+    name: Real logs for ${{ matrix.rule }}
+    needs: discover
+    # Each rule gets its own disposable VM, so tests can't affect each other.
+    runs-on: windows-2022
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    env:
+      RULE: ${{ matrix.rule }}
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+
+      - name: Install Sysmon
+        run: |
+          Invoke-WebRequest https://download.sysinternals.com/files/Sysmon.zip -OutFile Sysmon.zip
+          Expand-Archive Sysmon.zip -DestinationPath sysmon
+          # Sysinternals only publishes the latest build, so verify the signature instead of a pin.
+          $signature = Get-AuthenticodeSignature sysmon\Sysmon64.exe
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+            throw "Unexpected Sysmon signature: $($signature.Status) $($signature.SignerCertificate.Subject)"
+          }
+          .\sysmon\Sysmon64.exe -accepteula -i telemetry\sysmon-config.xml
+          if ($LASTEXITCODE -ne 0) { throw "Sysmon install failed with exit code $LASTEXITCODE" }
+
+      - name: Install Invoke-AtomicRedTeam
+        shell: powershell
+        env:
+          ATOMIC_MODULES: ${{ runner.temp }}\psmodules
+        run: |
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
+          New-Item -ItemType Directory -Force -Path $env:ATOMIC_MODULES | Out-Null
+          Save-Module -Name Invoke-AtomicRedTeam -RequiredVersion 2.3.0 -Path $env:ATOMIC_MODULES -Force
+
+      - name: Run the Atomic test and collect Sysmon logs
+        env:
+          ATOMIC_MODULES: ${{ runner.temp }}\psmodules
+        run: python scripts/collect_real_telemetry.py --rule "$env:RULE" --run-id "$env:RUN_ID" --out reports/events.jsonl --raw-out reports/sysmon-raw.xml
+
+      - name: Evaluate the rule against the real logs
+        run: python scripts/ship_events.py --rule "$env:RULE" --events reports/events.jsonl --run-id "$env:RUN_ID" --alerts-out reports/alerts.json
+
+      - name: Validate the alert
+        run: python scripts/validate_alert.py --rule "$env:RULE" --run-id "$env:RUN_ID" --alerts-file reports/alerts.json --telemetry "Real Sysmon" --report reports/report.json --summary reports/summary.md
+
+      - name: Publish the job summary
+        if: always()
+        run: |
+          if (Test-Path reports/summary.md) {
+            Get-Content reports/summary.md -Encoding utf8 | Add-Content $env:GITHUB_STEP_SUMMARY -Encoding utf8
+          } else {
+            Add-Content $env:GITHUB_STEP_SUMMARY "### ERROR: the pipeline stopped before validation. See the job log."
+          }
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: real-telemetry-${{ matrix.name }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 30
