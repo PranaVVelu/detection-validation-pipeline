@@ -108,3 +108,57 @@ jobs:
           path: reports/
           if-no-files-found: warn
           retention-days: 30
+
+  evasion:
+    name: Evasion scorecard
+    # Every variation runs on one disposable VM. A rule missing a known blind spot is
+    # expected here. The job fails if a result differs from the recorded one.
+    runs-on: windows-2022
+    timeout-minutes: 20
+    env:
+      RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}-evasion
+      DVP_PLACEHOLDERS: game/bin/placeholders.yml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+
+      - name: Install Sysmon
+        run: |
+          Invoke-WebRequest https://download.sysinternals.com/files/Sysmon.zip -OutFile Sysmon.zip
+          Expand-Archive Sysmon.zip -DestinationPath sysmon
+          $signature = Get-AuthenticodeSignature sysmon\Sysmon64.exe
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+            throw "Unexpected Sysmon signature: $($signature.Status) $($signature.SignerCertificate.Subject)"
+          }
+          .\sysmon\Sysmon64.exe -accepteula -i telemetry\sysmon-config.xml
+          if ($LASTEXITCODE -ne 0) { throw "Sysmon install failed with exit code $LASTEXITCODE" }
+
+      - name: Build the fake game
+        shell: powershell
+        run: .\game\build.ps1
+
+      - name: Run the variations and score the rules
+        run: python scripts/run_evasion.py --mode real --run-id "$env:RUN_ID" --report reports/scorecard.json --summary reports/scorecard.md --raw-out reports/raw-logs.txt
+
+      - name: Publish the scorecard
+        if: always()
+        run: |
+          if (Test-Path reports/scorecard.md) {
+            Get-Content reports/scorecard.md -Encoding utf8 | Add-Content $env:GITHUB_STEP_SUMMARY -Encoding utf8
+          } else {
+            Add-Content $env:GITHUB_STEP_SUMMARY "### ERROR: the scorecard stopped before finishing. See the job log."
+          }
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evasion-scorecard
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 30

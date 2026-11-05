@@ -1,0 +1,116 @@
+# Harmless variations of each game attack, and what each rule is expected to do.
+# "expected" records today's behavior, including known blind spots. A result that
+# differs in either direction fails the run, so that changes get noticed and recorded.
+#
+# Each variant has a script in game/variants/, which only targets the project's fake
+# game and license server. "events" models what that script logs, for the fast PR
+# check. Real runs use the logs instead, and those decide if the two ever disagree.
+variants:
+  - id: hosts-add-content
+    rule: detections/sigma/game/proc_creation_win_game_license_server_hosts_block.yml
+    name: Edit hosts with PowerShell instead of a cmd redirect
+    expected: missed
+    why: The rule looks for a > in the command.
+    events:
+      - Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+        CommandLine: '"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value ''127.0.0.1 license.fakequest.invalid''"'
+
+  - id: hosts-script-file
+    rule: detections/sigma/game/proc_creation_win_game_license_server_hosts_block.yml
+    name: Edit hosts from a script file
+    expected: missed
+    why: The command line only shows the script's name. Catching this needs file monitoring on hosts.
+    events:
+      - Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+        CommandLine: '"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File C:\Temp\update-settings.ps1'
+
+  - id: dll-uppercase-name
+    rule: detections/sigma/game/image_load_win_game_system_dll_outside_system_folder.yml
+    name: Plant the DLL with an uppercase name
+    expected: caught
+    why: Rule matching ignores case.
+    events:
+      - Image: C:\Games\FakeQuest\FakeQuest.exe
+        ImageLoaded: C:\Games\FakeQuest\WINMM.DLL
+
+  - id: dll-renamed-game
+    rule: detections/sigma/game/image_load_win_game_system_dll_outside_system_folder.yml
+    name: Plant the DLL next to a renamed copy of the game
+    expected: missed
+    why: The rule and the Sysmon config both go by the game's file name, so these DLL loads aren't logged.
+    events:
+      - Image: C:\Games\FakeQuest\Quest.exe
+        CommandLine: Quest.exe 2
+
+  - id: memory-full-access
+    rule: detections/sigma/game/proc_access_win_game_memory_write_access.yml
+    name: Request full access to the game's memory
+    expected: missed
+    why: A launcher gets full access to the game too, so the rule leaves this value out to avoid false alerts.
+    events:
+      - SourceImage: C:\Games\FakeQuest\MemoryPeek.exe
+        TargetImage: C:\Games\FakeQuest\FakeQuest.exe
+        GrantedAccess: "0x1FFFFF"
+
+  - id: memory-write-only
+    rule: detections/sigma/game/proc_access_win_game_memory_write_access.yml
+    name: Request only the rights needed to write memory
+    expected: missed
+    why: The rule's list of values assumes read access is requested too.
+    events:
+      - SourceImage: C:\Games\FakeQuest\MemoryPeek.exe
+        TargetImage: C:\Games\FakeQuest\FakeQuest.exe
+        GrantedAccess: "0x1028"
+
+  - id: bootleg-renamed
+    rule: detections/sigma/game/proc_creation_win_game_unofficial_build.yml
+    name: Run the modified copy under a different file name
+    expected: missed
+    why: The rule only checks files named FakeQuest.exe.
+    events:
+      - Image: C:\Games\FakeQuest\bootleg\Quest.exe
+        CommandLine: '"C:\Games\FakeQuest\bootleg\Quest.exe" 2'
+        OriginalFileName: FakeQuest.exe
+        Hashes: SHA256=BAD0000000000000000000000000000000000000000000000000000000000000
+
+  - id: guessing-many-machine-ids
+    rule: detections/sigma/license/license_activation_key_guessing.yml
+    name: Guess keys while changing the reported machine ID
+    expected: caught
+    why: The rule counts by address, which the client can't choose as easily.
+    events:
+      - repeat: 25
+        event: activation
+        result: failure
+        reason: unknown_key
+        license_key_hash: guessed-{n}
+        machine_id: machine-{n}
+        client_ip: 127.0.0.1
+
+  - id: guessing-many-addresses
+    rule: detections/sigma/license/license_activation_key_guessing.yml
+    name: Guess keys from many addresses
+    expected: missed
+    why: The rule counts each address separately. Counting across addresses needs tuning against real traffic.
+    events:
+      - repeat: 25
+        event: activation
+        result: failure
+        reason: unknown_key
+        license_key_hash: guessed-{n}
+        machine_id: machine-attacker
+        client_ip: 127.0.0.{n}
+
+  - id: sharing-same-machine-id
+    rule: detections/sigma/license/license_activation_key_sharing.yml
+    name: Share a key among users reporting the same machine ID
+    expected: missed
+    why: The rule trusts the machine ID the client reports. In production, counting addresses per key could help.
+    events:
+      - repeat: 8
+        event: activation
+        result: success
+        reason: none
+        license_key_hash: shared-key
+        machine_id: machine-cloned
+        client_ip: 127.0.0.1

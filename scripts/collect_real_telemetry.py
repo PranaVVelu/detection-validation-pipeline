@@ -142,18 +142,18 @@ def label_game_events(raw_events: List[Dict[str, Any]], test: ValidationTest, ru
     return labeled
 
 
-def run_license_scenario(test: ValidationTest, scenario: str, log_path: Path) -> None:
-    """Run one side of a license test against its own server, which writes the log."""
+def run_license_script(script: Path, scenario: str, log_path: Path) -> None:
+    """Run a client script against its own license server, which writes the log."""
     server = subprocess.Popen([sys.executable, str(LICENSE_SERVER), "--log", str(log_path)],
                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
     try:
         url = (server.stdout.readline() if server.stdout else "").strip()
         if not url:
-            raise PipelineError(f"the license server didn't start for {test.guid}")
-        client = subprocess.run([sys.executable, str(GAME_DIR / "scenarios" / f"{test.guid}.py"),
-                                 "--scenario", scenario, "--url", url], stdin=subprocess.DEVNULL, timeout=120, check=False)
+            raise PipelineError(f"the license server didn't start for {script.name}")
+        client = subprocess.run([sys.executable, str(script), "--scenario", scenario, "--url", url],
+                                stdin=subprocess.DEVNULL, timeout=120, check=False)
         if client.returncode != 0:
-            raise PipelineError(f"Scenario {scenario} of {test.guid} failed with exit code {client.returncode}")
+            raise PipelineError(f"{script.name} ({scenario}) failed with exit code {client.returncode}")
     finally:
         server.terminate()
         server.wait(timeout=10)
@@ -180,7 +180,7 @@ def collect_license_events(test: ValidationTest, run_id: str, raw_path: Path, wo
     raw_lines: List[str] = []
     for scenario in ("benign", "attack"):
         log_path = workdir / f"{scenario}.jsonl"
-        run_license_scenario(test, scenario, log_path)
+        run_license_script(GAME_DIR / "scenarios" / f"{test.guid}.py", scenario, log_path)
         lines = log_path.read_text(encoding="utf-8").splitlines()
         raw_lines += lines
         events += label_license_events(lines, test, run_id, scenario)
