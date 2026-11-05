@@ -24,7 +24,8 @@ status: experimental
 description: >
   Detects one address trying many different license keys that don't exist. It counts
   different keys rather than failures, so a player retrying the same mistyped key
-  doesn't trigger it.
+  doesn't trigger it. The threshold of 20 leaves room for a small LAN event, where
+  players mistyping once all share one address.
 references:
   - https://attack.mitre.org/techniques/T1110/
 author: PranaVVelu
@@ -40,10 +41,10 @@ correlation:
     - client_ip
   timespan: 5m
   condition:
-    gte: 10
+    gte: 20
     field: license_key_hash
 falsepositives:
-  - Many players sharing one public address, such as a school or LAN event
+  - Large groups sharing one public address, such as a school
 level: high
 x_game_threat: license-key-guessing
 x_game_test: license-key-guessing

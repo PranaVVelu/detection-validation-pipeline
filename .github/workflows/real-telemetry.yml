@@ -110,8 +110,8 @@ jobs:
           retention-days: 30
 
   evasion:
-    name: Evasion scorecard
-    # Every variation runs on one disposable VM. A rule missing a known blind spot is
+    name: Rule scorecards
+    # Everything runs on one disposable VM. A known blind spot or noisy rule is
     # expected here. The job fails if a result differs from the recorded one.
     runs-on: windows-2022
     timeout-minutes: 20
@@ -145,13 +145,20 @@ jobs:
       - name: Run the variations and score the rules
         run: python scripts/run_evasion.py --mode real --run-id "$env:RUN_ID" --report reports/scorecard.json --summary reports/scorecard.md --raw-out reports/raw-logs.txt
 
-      - name: Publish the scorecard
+      - name: Run normal activity and score each rule's noise
+        # Still runs after an evasion mismatch, so one run reports on both.
+        if: success() || failure()
+        run: python scripts/run_noise.py --mode real --run-id "$env:RUN_ID-noise" --report reports/noise.json --summary reports/noise.md --raw-out reports/noise-raw-logs.txt
+
+      - name: Publish the scorecards
         if: always()
         run: |
-          if (Test-Path reports/scorecard.md) {
-            Get-Content reports/scorecard.md -Encoding utf8 | Add-Content $env:GITHUB_STEP_SUMMARY -Encoding utf8
-          } else {
-            Add-Content $env:GITHUB_STEP_SUMMARY "### ERROR: the scorecard stopped before finishing. See the job log."
+          foreach ($file in 'reports/scorecard.md', 'reports/noise.md') {
+            if (Test-Path $file) {
+              Get-Content $file -Encoding utf8 | Add-Content $env:GITHUB_STEP_SUMMARY -Encoding utf8
+            } else {
+              Add-Content $env:GITHUB_STEP_SUMMARY "### ERROR: $file is missing, so a scorecard stopped before finishing. See the job log."
+            }
           }
 
       - name: Upload evidence

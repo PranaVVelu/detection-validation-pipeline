@@ -1,0 +1,172 @@
+# Normal activity, and which rules it's recorded to set off. Every rule is scored on
+# every scenario. A result that differs from the record fails the run, in either direction.
+#
+# Each scenario has a script in game/noise/. "events" models what the script logs for
+# the fast PR check. Real runs use the logs instead, and those decide if the two disagree.
+_rules:
+  - &bootleg detections/sigma/game/proc_creation_win_game_unofficial_build.yml
+  - &dll detections/sigma/game/image_load_win_game_system_dll_outside_system_folder.yml
+  - &memory detections/sigma/game/proc_access_win_game_memory_write_access.yml
+  - &encoded detections/sigma/proc_creation_win_powershell_encoded_command.yml
+  - &encoded_kql detections/kql/powershell_encoded_command.kql
+  - &guessing detections/sigma/license/license_activation_key_guessing.yml
+  - &sharing detections/sigma/license/license_activation_key_sharing.yml
+
+scenarios:
+  - id: normal-session
+    kind: game
+    name: Normal session with the official game
+    fires: []
+    why: Nothing unusual happens.
+    events:
+      - category: process_creation
+        Image: C:\Games\FakeQuest\FakeQuest.exe
+        CommandLine: '"C:\Games\FakeQuest\FakeQuest.exe" 2'
+        OriginalFileName: FakeQuest.exe
+        Hashes: SHA256=0FF1C1A1000000000000000000000000000000000000000000000000000000AA
+      - category: process_access
+        SourceImage: C:\Games\FakeQuest\MemoryPeek.exe
+        TargetImage: C:\Games\FakeQuest\FakeQuest.exe
+        GrantedAccess: "0x1000"
+
+  - id: launcher-starts-game
+    kind: game
+    name: Launcher starts and stops the game
+    fires: []
+    why: The memory rule leaves out full access, because launchers get it too.
+    events:
+      - category: process_access
+        SourceImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+        TargetImage: C:\Games\FakeQuest\FakeQuest.exe
+        GrantedAccess: "0x1FFFFF"
+
+  - id: update-before-hash-list
+    kind: game
+    name: Official update before its hash reaches the list
+    fires: [*bootleg]
+    why: A new build looks like a bootleg until it's listed, so a release has to publish its hash first.
+    events:
+      - category: process_creation
+        Image: C:\Games\FakeQuest\update\FakeQuest.exe
+        CommandLine: '"C:\Games\FakeQuest\update\FakeQuest.exe" 2'
+        OriginalFileName: FakeQuest.exe
+        Hashes: SHA256=A11CE00000000000000000000000000000000000000000000000000000000000
+
+  - id: overlay-opens-game
+    kind: game
+    name: Overlay opens the game with write access
+    fires: [*memory]
+    why: Overlays can ask for the same access as cheats. Allowing one by file name would be easy to fake, so this needs signature checks.
+    events:
+      - category: process_access
+        SourceImage: C:\Games\FakeQuest\GameOverlay.exe
+        TargetImage: C:\Games\FakeQuest\FakeQuest.exe
+        GrantedAccess: "0x1438"
+
+  - id: mod-manager-adds-dll
+    kind: game
+    name: Mod manager adds a DLL to the game's folder
+    fires: [*dll]
+    why: A legitimate mod and a crack load the same way, so telling them apart needs a list of approved mods.
+    events:
+      - category: image_load
+        Image: C:\Games\FakeQuest\FakeQuest.exe
+        ImageLoaded: C:\Games\FakeQuest\winmm.dll
+
+  - id: admin-encoded-command
+    kind: game
+    name: Admin tool runs an encoded PowerShell command
+    fires: [*encoded, *encoded_kql]
+    why: Some management software uses encoded commands, so these rules need an allowlist tuned to each environment.
+    events:
+      - category: process_creation
+        Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+        CommandLine: 'powershell.exe -NoProfile -EncodedCommand RwBlAHQALQBEAGEAdABlAA=='
+
+  - id: launch-day
+    kind: license
+    name: Launch day with 60 players activating
+    fires: []
+    why: Each player has a real key on one machine.
+    events:
+      - repeat: 60
+        category: license_activation
+        event: activation
+        result: success
+        reason: none
+        license_key_hash: player-{n}
+        machine_id: machine-{n}
+        client_ip: 127.0.0.1
+
+  - id: lan-event-small
+    kind: license
+    name: Small LAN event with 12 players mistyping once
+    fires: []
+    why: Set off the guessing rule until its threshold went from 10 different keys to 20.
+    events:
+      - repeat: 12
+        category: license_activation
+        event: activation
+        result: failure
+        reason: unknown_key
+        license_key_hash: typo-{n}
+        machine_id: machine-{n}
+        client_ip: 127.0.0.1
+
+  - id: lan-event-large
+    kind: license
+    name: School or large LAN event with 30 players mistyping once
+    fires: [*guessing]
+    why: Everyone shares one address. Grouping by machine too would stop this, but guessers can change their reported machine ID.
+    events:
+      - repeat: 30
+        category: license_activation
+        event: activation
+        result: failure
+        reason: unknown_key
+        license_key_hash: typo-{n}
+        machine_id: machine-{n}
+        client_ip: 127.0.0.1
+
+  - id: family-shared-pc
+    kind: license
+    name: Family sharing one PC with their own keys
+    fires: []
+    why: The sharing rule counts machines per key, not keys per machine.
+    events:
+      - repeat: 3
+        category: license_activation
+        event: activation
+        result: success
+        reason: none
+        license_key_hash: player-{n}
+        machine_id: machine-family
+        client_ip: 127.0.0.1
+
+  - id: new-pc-same-hour
+    kind: license
+    name: Player sets up a new PC within the hour
+    fires: [*sharing]
+    why: A third machine in an hour goes past the two allowed seats. It looks the same as the start of key sharing.
+    events:
+      - category: license_activation
+        event: activation
+        result: success
+        reason: none
+        license_key_hash: player-key
+        machine_id: machine-desktop
+        client_ip: 127.0.0.1
+      - category: license_activation
+        event: activation
+        result: success
+        reason: none
+        license_key_hash: player-key
+        machine_id: machine-laptop
+        client_ip: 127.0.0.1
+      - category: license_activation
+        event: activation
+        result: failure
+        reason: seat_limit
+        license_key_hash: player-key
+        machine_id: machine-new-desktop
+        client_ip: 127.0.0.1

@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional, Set, TextIO
 
-VALID_KEYS = {"FQ-DEMO-0001", "FQ-DEMO-0002"}
+VALID_KEYS = {"FQ-DEMO-0001", "FQ-DEMO-0002"} | {f"FQ-PLAYER-{n:04d}" for n in range(1, 101)}
 SEATS_PER_KEY = 2
 MAX_BODY_BYTES = 4096
 
