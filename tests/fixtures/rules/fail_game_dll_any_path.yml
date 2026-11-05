@@ -6,6 +6,6 @@ tags: [attack.t1574.001]
 detection:
   selection:
     Image|endswith: '\FakeQuest.exe'
-    ImageLoaded|endswith: '\version.dll'
+    ImageLoaded|endswith: '\winmm.dll'
   condition: selection
 x_game_test: game-dll-sideload

@@ -11,9 +11,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-$planted = Join-Path $GameDir 'version.dll'
+$planted = Join-Path $GameDir 'winmm.dll'
 if ($Scenario -eq 'attack') {
-    Copy-Item 'C:\Windows\System32\version.dll' $planted
+    Copy-Item 'C:\Windows\System32\winmm.dll' $planted
 }
 try {
     & (Join-Path $GameDir 'FakeQuest.exe') 2

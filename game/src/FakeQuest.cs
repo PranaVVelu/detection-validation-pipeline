@@ -7,16 +7,17 @@ using System.Threading;
 
 internal static class FakeQuest
 {
-    // Importing from version.dll makes Windows load it by name, which is how real
-    // games pick up a planted copy from their own folder.
-    [DllImport("version.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetFileVersionInfoSizeW(string filename, out int handle);
+    // Importing from winmm.dll makes Windows load it by name, which is how real
+    // games pick up a planted copy from their own folder. It can't be version.dll:
+    // real logs show the .NET runtime loads that from System32 before Main runs, so
+    // a planted copy is never used.
+    [DllImport("winmm.dll")]
+    private static extern uint timeGetTime();
 
     private static int Main(string[] args)
     {
         int seconds = args.Length > 0 ? int.Parse(args[0]) : 2;
-        int handle;
-        GetFileVersionInfoSizeW(Environment.GetCommandLineArgs()[0], out handle);
+        timeGetTime();
 
         Console.WriteLine("FakeQuest: license check passed (this is a stub).");
         Thread.Sleep(TimeSpan.FromSeconds(seconds));

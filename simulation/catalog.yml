@@ -92,12 +92,12 @@ tests:
     category: image_load
     attack_events:
       - Image: C:\Games\FakeQuest\FakeQuest.exe
-        ImageLoaded: C:\Games\FakeQuest\version.dll
+        ImageLoaded: C:\Games\FakeQuest\winmm.dll
         Signed: "true"
     benign_events:
       # The game loading the same DLL from where it belongs.
       - Image: C:\Games\FakeQuest\FakeQuest.exe
-        ImageLoaded: C:\Windows\System32\version.dll
+        ImageLoaded: C:\Windows\System32\winmm.dll
         Signed: "true"
 
   game-memory-access:
@@ -108,6 +108,8 @@ tests:
     attack_events:
       - SourceImage: C:\Games\FakeQuest\MemoryPeek.exe
         TargetImage: C:\Games\FakeQuest\FakeQuest.exe
+        # MemoryPeek requests 0x0438. Real logs show 0x1438, because Windows adds
+        # the limited query right to the request.
         GrantedAccess: "0x1438"
     benign_events:
       # What a task manager asks for: basic information only.
