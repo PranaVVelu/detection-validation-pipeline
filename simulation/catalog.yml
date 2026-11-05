@@ -1,4 +1,4 @@
-# Telemetry profiles for simulated Atomic Red Team tests.
+# Telemetry profiles for validation tests: Atomic Red Team tests and game tests.
 #
 # `upstream_command` is copied from the Atomic definition at the commit below.
 # `attack_events` model what a sensor records when the command runs. They are
@@ -63,3 +63,56 @@ tests:
         CommandLine: 'cmd  /c echo Hello, from CMD!  '
         ParentImage: C:\Windows\System32\cmd.exe
         ParentCommandLine: '"cmd.exe" /c %%LOCALAPPDATA:~-3,1%%md /c echo Hello, from CMD! > hello.txt & type hello.txt'
+
+  # Game tests run against this project's own fake game (see game/). Each one is
+  # harmless: the .invalid domain can't exist, the DLL is an unmodified signed
+  # Windows file, and the memory tool opens a handle without reading or writing.
+  game-hosts-license-block:
+    kind: game
+    technique: T1565.001
+    name: Block the game's license server in the hosts file
+    category: process_creation
+    attack_events:
+      - Image: C:\Windows\System32\cmd.exe
+        CommandLine: '"C:\Windows\system32\cmd.exe" /c "echo 127.0.0.1 license.fakequest.invalid>> C:\Windows\System32\drivers\etc\hosts"'
+        ParentImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+    benign_events:
+      # Reading the file, and a developer adding their own entry.
+      - Image: C:\Windows\System32\cmd.exe
+        CommandLine: '"C:\Windows\system32\cmd.exe" /c "type C:\Windows\System32\drivers\etc\hosts"'
+        ParentImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      - Image: C:\Windows\System32\cmd.exe
+        CommandLine: '"C:\Windows\system32\cmd.exe" /c "echo 127.0.0.1 dev.local>> C:\Windows\System32\drivers\etc\hosts"'
+        ParentImage: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+
+  game-dll-sideload:
+    kind: game
+    technique: T1574.001
+    name: Plant a DLL in the game folder
+    category: image_load
+    attack_events:
+      - Image: C:\Games\FakeQuest\FakeQuest.exe
+        ImageLoaded: C:\Games\FakeQuest\winmm.dll
+        Signed: "true"
+    benign_events:
+      # The game loading the same DLL from where it belongs.
+      - Image: C:\Games\FakeQuest\FakeQuest.exe
+        ImageLoaded: C:\Windows\System32\winmm.dll
+        Signed: "true"
+
+  game-memory-access:
+    kind: game
+    technique: T1055
+    name: Open the game's memory with write access
+    category: process_access
+    attack_events:
+      - SourceImage: C:\Games\FakeQuest\MemoryPeek.exe
+        TargetImage: C:\Games\FakeQuest\FakeQuest.exe
+        # MemoryPeek requests 0x0438. Real logs show 0x1438, because Windows adds
+        # the limited query right to the request.
+        GrantedAccess: "0x1438"
+    benign_events:
+      # What a task manager asks for: basic information only.
+      - SourceImage: C:\Games\FakeQuest\MemoryPeek.exe
+        TargetImage: C:\Games\FakeQuest\FakeQuest.exe
+        GrantedAccess: "0x1000"

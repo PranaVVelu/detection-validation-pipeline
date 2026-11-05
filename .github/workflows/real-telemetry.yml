@@ -1,6 +1,6 @@
 name: Real Telemetry Validation
 
-# This workflow EXECUTES Atomic Red Team tests, so it never runs on pull requests:
+# This workflow EXECUTES tests for real, so it never runs on pull requests:
 # code from a PR must not get to choose what runs. Fork PRs can't trigger a push
 # here, so "telemetry/**" is limited to people with write access.
 on:
@@ -12,6 +12,7 @@ on:
       - "src/**"
       - "scripts/**"
       - "telemetry/**"
+      - "game/**"
       - "requirements*.txt"
       - ".github/workflows/real-telemetry.yml"
   workflow_dispatch:
@@ -73,7 +74,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path $env:ATOMIC_MODULES | Out-Null
           Save-Module -Name Invoke-AtomicRedTeam -RequiredVersion 2.3.0 -Path $env:ATOMIC_MODULES -Force
 
-      - name: Run the Atomic test and collect Sysmon logs
+      - name: Build the fake game
+        shell: powershell
+        run: .\game\build.ps1
+
+      - name: Run the test and collect Sysmon logs
         env:
           ATOMIC_MODULES: ${{ runner.temp }}\psmodules
         run: python scripts/collect_real_telemetry.py --rule "$env:RULE" --run-id "$env:RUN_ID" --out reports/events.jsonl --raw-out reports/sysmon-raw.xml

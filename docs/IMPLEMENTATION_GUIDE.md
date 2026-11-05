@@ -101,12 +101,17 @@ Things to keep in mind:
 - **Never trigger this from pull requests.** It executes code, so it's limited to people with write access.
 - **Update the simulation when real logs surprise you.** When real behavior differs from the catalog, fix the catalog so that the fast PR check stays accurate.
 
-## Next: game security detections
+## Game security detections
 
-The planned direction is detecting game tampering and license abuse, using a harmless fake game of the project's own. It detects tampering only, with no real cracks, cheats, bypass steps, or commercial game files.
+Game tests work like Atomic tests, except that each one is a script in `game/scenarios/` with a `benign` and an `attack` side, run against the project's fake game. To add one:
 
-1. **Tampering on the PC:** rules for things like a license server blocked in the `hosts` file, an unexpected DLL in the game folder, or a process injecting into the game.
-2. **License server abuse:** a small license server that produces real logs, a script that simulates abuse such as one key activating on many devices, and rules that count activity over time.
+1. **Add the scenario script.** Keep it harmless: no real cracks, cheats, bypass steps, or commercial game files.
+2. **Add the test to the catalog** with `kind: game`, its event category, and modeled attack and benign events.
+3. **Update `telemetry/sysmon-config.xml`** if the test needs an event type that isn't collected yet.
+4. **Write the rule** with `x_game_test` and an `x_game_threat` label.
+5. **Push to a `telemetry/**` branch**, then compare the real logs with what you modeled and fix any differences.
+
+**Next up: license server abuse.** A small license server of the project's own would produce real logs, a script would simulate abuse such as one key activating on many devices, and rules would count activity over time. The rule engines will need to support aggregation first.
 
 ## Phase 3: Stretch goals
 

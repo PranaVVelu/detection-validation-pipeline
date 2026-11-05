@@ -53,7 +53,7 @@ class SiemStore:
             "techniques": rule.techniques,
             "run_id": run_id,
             "scenario": meta.get("scenario"),
-            "atomic_test": meta.get("atomic_test"),
+            "test_id": meta.get("test_id"),
             "event_id": meta.get("event_id"),
             "fired_at": datetime.now(timezone.utc).isoformat(),
             "matched_event": dict(event),

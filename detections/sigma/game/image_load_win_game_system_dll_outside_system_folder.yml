@@ -1,0 +1,35 @@
+title: Game Loaded a System DLL From Outside the Windows Folder
+id: 8f47a0d3-2b6e-4c91-a5d8-16c3e9f7b240
+status: experimental
+description: >
+  Detects the game loading a DLL named like a Windows system file from anywhere
+  other than the Windows folder. Planting a DLL with one of these names next to a
+  game is a common way to run unauthorized code inside it, including for cracks,
+  cheats, and some legitimate mods.
+references:
+  - https://attack.mitre.org/techniques/T1574/001/
+author: PranaVVelu
+date: 2026-11-05
+tags:
+  - attack.persistence
+  - attack.t1574.001
+logsource:
+  category: image_load
+  product: windows
+detection:
+  selection:
+    Image|endswith: '\FakeQuest.exe'
+    ImageLoaded|endswith:
+      - '\version.dll'
+      - '\winmm.dll'
+      - '\dinput8.dll'
+      - '\dxgi.dll'
+      - '\d3d11.dll'
+  filter_system:
+    ImageLoaded|startswith: 'C:\Windows\'
+  condition: selection and not filter_system
+falsepositives:
+  - Legitimate mod loaders and graphics overlays
+level: high
+x_game_threat: mod-injection
+x_game_test: game-dll-sideload

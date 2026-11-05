@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Decide whether a detection rule fired correctly for its Atomic Red Team test.
+"""Decide whether a detection rule fired correctly for its validation test.
 
 A rule passes only if all of these hold for this run:
 
@@ -36,7 +36,7 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from dvp.catalog import DEFAULT_CATALOG, AtomicTest, load_atomic_test  # noqa: E402
+from dvp.catalog import DEFAULT_CATALOG, ValidationTest, load_test  # noqa: E402
 from dvp.errors import PipelineError  # noqa: E402
 from dvp.rules import Rule, load_rule  # noqa: E402
 
@@ -59,7 +59,7 @@ class Report:
     rule_id: str
     rule_title: str
     run_id: str
-    atomic_test: str
+    test_id: str
     technique: str
     verdict: str
     telemetry: str
@@ -160,9 +160,15 @@ def collect_alerts(source: Any, run_id: str, rule_id: str, timeout: float,
 # Evaluation
 # --------------------------------------------------------------------------- #
 
-def evaluate(rule: Rule, test: AtomicTest, alerts: List[Dict[str, Any]], events: Dict[str, int]) -> List[Check]:
+def _describe_event(event: Dict[str, Any]) -> str:
+    """Pick the most useful field, since each event type records different ones."""
+    return event.get("CommandLine") or event.get("ImageLoaded") or \
+        f"{event.get('SourceImage')} -> {event.get('TargetImage')} access={event.get('GrantedAccess')}"
+
+
+def evaluate(rule: Rule, test: ValidationTest, alerts: List[Dict[str, Any]], events: Dict[str, int]) -> List[Check]:
     """Apply the pass criteria. This is pure logic, which keeps it easy to unit test."""
-    true_positives = [a for a in alerts if a.get("scenario") == "attack" and a.get("atomic_test") == test.guid]
+    true_positives = [a for a in alerts if a.get("scenario") == "attack" and a.get("test_id") == test.guid]
     false_positives = [a for a in alerts if a.get("scenario") == "benign"]
 
     return [
@@ -180,7 +186,7 @@ def evaluate(rule: Rule, test: AtomicTest, alerts: List[Dict[str, Any]], events:
             "No false positive",
             not false_positives,
             f"{len(false_positives)} alert(s) on {events['benign']} benign event(s)"
-            + "".join(f"\n      matched: {a.get('matched_event', {}).get('CommandLine')}" for a in false_positives),
+            + "".join(f"\n      matched: {_describe_event(a.get('matched_event', {}))}" for a in false_positives),
         ),
     ]
 
@@ -199,7 +205,7 @@ def render_markdown(report: Report) -> str:
     lines = [
         f"### {icon} {report.verdict}: {_table_cell(report.rule_title)}",
         "",
-        f"Rule `{report.rule_id}` against Atomic test `{report.atomic_test}` ({report.technique}), "
+        f"Rule `{report.rule_id}` against test `{report.test_id}` ({report.technique}), "
         f"{report.telemetry} telemetry, run `{report.run_id}`",
         "",
         "| Check | Result | Detail |",
@@ -252,7 +258,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
     try:
         rule = load_rule(args.rule)
-        test = load_atomic_test(rule.atomic_test, args.catalog)
+        test = load_test(rule.test_id, args.catalog)
         source = ApiSource(args.siem_url) if args.siem_url else FileSource(args.alerts_file)
         events = wait_for_telemetry(source, args.run_id, rule.id, args.timeout, args.poll_interval)
         alerts = collect_alerts(source, args.run_id, rule.id, args.timeout, args.poll_interval, args.settle)

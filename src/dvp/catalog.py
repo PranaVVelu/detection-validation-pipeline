@@ -1,4 +1,4 @@
-"""Access the catalog of simulated Atomic Red Team tests."""
+"""Access the catalog of validation tests: Atomic Red Team tests and game tests."""
 
 from __future__ import annotations
 
@@ -14,10 +14,12 @@ DEFAULT_CATALOG = Path(__file__).resolve().parents[2] / "simulation" / "catalog.
 
 
 @dataclass(frozen=True)
-class AtomicTest:
+class ValidationTest:
     guid: str
+    kind: str
     technique: str
     name: str
+    category: str
     upstream_command: str
     attack_events: List[Dict[str, Any]]
     benign_events: List[Dict[str, Any]]
@@ -29,8 +31,8 @@ class AtomicTest:
         return self.upstream_command.split("#{")[0].strip()
 
 
-def load_atomic_test(guid: str, catalog_path: Path = DEFAULT_CATALOG) -> AtomicTest:
-    """Return one catalog entry, keyed by Atomic's stable GUID (test numbers shift)."""
+def load_test(guid: str, catalog_path: Path = DEFAULT_CATALOG) -> ValidationTest:
+    """Return one catalog entry, keyed by Atomic's stable GUID or a game test's name."""
     try:
         catalog = yaml.safe_load(Path(catalog_path).read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
@@ -38,13 +40,15 @@ def load_atomic_test(guid: str, catalog_path: Path = DEFAULT_CATALOG) -> AtomicT
 
     entry = catalog.get("tests", {}).get(guid)
     if entry is None:
-        raise PipelineError(f"Atomic test {guid!r} is not in {catalog_path}; add it to the catalog")
-    return AtomicTest(
+        raise PipelineError(f"Test {guid!r} is not in {catalog_path}; add it to the catalog")
+    return ValidationTest(
         guid=guid,
+        kind=entry.get("kind", "atomic"),
         technique=entry["technique"],
         name=entry["name"],
-        upstream_command=entry["upstream_command"],
+        category=entry["category"],
+        upstream_command=entry.get("upstream_command", ""),
         attack_events=entry["attack_events"],
-        benign_events=catalog["benign_baseline"][entry["category"]],
+        benign_events=entry.get("benign_events") or catalog["benign_baseline"][entry["category"]],
         upstream_commit=catalog["upstream"]["commit"],
     )

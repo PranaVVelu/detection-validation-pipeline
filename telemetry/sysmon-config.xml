@@ -1,10 +1,17 @@
 <!--
-  Deliberately minimal Sysmon configuration: log every process creation.
-  Filtering happens in the pipeline, so a tuned-out event can't hide a failure.
+  Deliberately minimal Sysmon configuration. It logs every process creation, so a
+  tuned-out event can't hide a failure. DLL loads and process access are far too
+  noisy to log for every process, so those are limited to the fake game.
 -->
 <Sysmon schemaversion="4.90">
   <HashAlgorithms>sha256</HashAlgorithms>
   <EventFiltering>
     <ProcessCreate onmatch="exclude" />
+    <ImageLoad onmatch="include">
+      <Image condition="end with">\FakeQuest.exe</Image>
+    </ImageLoad>
+    <ProcessAccess onmatch="include">
+      <TargetImage condition="end with">\FakeQuest.exe</TargetImage>
+    </ProcessAccess>
   </EventFiltering>
 </Sysmon>
