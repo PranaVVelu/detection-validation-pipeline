@@ -66,11 +66,16 @@ jobs:
 
       - name: Install Invoke-AtomicRedTeam
         shell: powershell
+        env:
+          ATOMIC_MODULES: ${{ runner.temp }}\psmodules
         run: |
           Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force | Out-Null
-          Install-Module -Name Invoke-AtomicRedTeam -RequiredVersion 2.3.0 -Scope CurrentUser -Force
+          New-Item -ItemType Directory -Force -Path $env:ATOMIC_MODULES | Out-Null
+          Save-Module -Name Invoke-AtomicRedTeam -RequiredVersion 2.3.0 -Path $env:ATOMIC_MODULES -Force
 
       - name: Run the Atomic test and collect Sysmon logs
+        env:
+          ATOMIC_MODULES: ${{ runner.temp }}\psmodules
         run: python scripts/collect_real_telemetry.py --rule "$env:RULE" --run-id "$env:RUN_ID" --out reports/events.jsonl --raw-out reports/sysmon-raw.xml
 
       - name: Evaluate the rule against the real logs
