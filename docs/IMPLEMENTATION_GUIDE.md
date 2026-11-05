@@ -111,6 +111,10 @@ Game tests work like Atomic tests, except that each one is a script in `game/sce
 4. **Write the rule** with `x_game_test` and an `x_game_threat` label.
 5. **Push to a `telemetry/**` branch**, then compare the real logs with what you modeled and fix any differences.
 
+### Noise scenarios
+
+To add normal activity, add a script to `game/noise/` named after its ID, then add an entry to `simulation/noise.yml` with the rules it sets off, the reason, and modeled events. Run `make noise` to check the modeled events, then push to a `telemetry/**` branch to run it for real. Check the evasion scorecard when you tune a rule, because tuning away noise can open a blind spot.
+
 ### Evasion variations
 
 To add a variation, add a script to `game/variants/` named after its ID, then add an entry to `simulation/variants.yml` with its expected result, the reason, and modeled events. Run `make evasion` to check the modeled events, then push to a `telemetry/**` branch to run it for real. Keep variations harmless and aimed at the fake game. When you widen a rule to catch one, add a normal action that the wider rule could wrongly match to its benign side.

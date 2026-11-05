@@ -101,8 +101,8 @@ scenarios:
   - id: lan-event-small
     kind: license
     name: Small LAN event with 12 players mistyping once
-    fires: [*guessing]
-    why: Everyone shares one address, and the rule counts different unknown keys per address.
+    fires: []
+    why: Set off the guessing rule until its threshold went from 10 different keys to 20.
     events:
       - repeat: 12
         category: license_activation

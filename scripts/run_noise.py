@@ -34,7 +34,7 @@ from dvp.catalog import ValidationTest, expand_events  # noqa: E402
 from dvp.errors import PipelineError  # noqa: E402
 from dvp.rules import RULE_SUFFIXES, Rule, load_rule  # noqa: E402
 from dvp.siem import SiemStore  # noqa: E402
-from run_evasion import NO_PROCESS, run_game_script  # noqa: E402
+from run_evasion import NO_PROCESS, print_evidence, run_game_script  # noqa: E402
 
 DEFAULT_SCENARIOS = ROOT / "simulation" / "noise.yml"
 NOISE_DIR = GAME_DIR / "noise"
@@ -109,6 +109,7 @@ def score_scenario(scenario: Dict[str, Any], rules: Dict[str, Rule], mode: str, 
             handle.writelines(json.dumps({"scenario": scenario["id"], **event}) + "\n" for event in events)
 
     alerts = alerts_by_rule(rules, scenario_run, events)
+    print_evidence(scenario["id"], events)
     return {
         "id": scenario["id"],
         "name": scenario["name"],
