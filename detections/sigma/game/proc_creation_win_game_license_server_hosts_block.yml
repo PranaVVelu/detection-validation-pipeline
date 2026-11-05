@@ -1,0 +1,29 @@
+title: License Server Redirected Through the Hosts File
+id: 2c9e6b14-71d3-4a58-9f02-e8b4c5d7a361
+status: experimental
+description: >
+  Detects a command that writes a license server entry to the Windows hosts file.
+  Pointing a game's license server at localhost is a common way to stop a license
+  check from reaching the publisher. Only catches edits made from a command line.
+references:
+  - https://attack.mitre.org/techniques/T1565/001/
+author: PranaVVelu
+date: 2026-11-05
+tags:
+  - attack.impact
+  - attack.t1565.001
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection:
+    CommandLine|contains|all:
+      - '\drivers\etc\hosts'
+      - '>'
+      - 'license'
+  condition: selection
+falsepositives:
+  - Administrators testing their own license servers
+level: medium
+x_game_threat: license-bypass
+x_game_test: game-hosts-license-block

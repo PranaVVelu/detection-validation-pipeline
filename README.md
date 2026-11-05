@@ -92,10 +92,13 @@ The last command fails on purpose.
 detections/
   sigma/                            Sigma rules (*.yml, *.yaml)
   kql/                              KQL rules (*.kql)
-simulation/catalog.yml              Atomic test telemetry and the benign baseline
+game/                               FakeQuest, its test tool, and the tampering scenarios
+simulation/catalog.yml              Test telemetry and the benign baseline
+telemetry/sysmon-config.xml         Sysmon configuration for real runs
 scripts/
   discover_rules.py                 Selects changed rules, builds the job matrix
   simulate_atomic.py                Generates telemetry for a rule's mapped test
+  collect_real_telemetry.py         Runs a test on Windows and labels the real Sysmon logs
   ship_events.py                    Loads the rule and forwards events to the SIEM
   validate_alert.py                 Applies the pass criteria, returns the exit code
 src/dvp/
@@ -130,6 +133,8 @@ DeviceProcessEvents
 | where FileName in~ ("powershell.exe", "pwsh.exe")
 ```
 
+**Game rules:** use `x_game_test` with the name of a test in the catalog, and add a matching script to `game/scenarios/`.
+
 If the test isn't in [simulation/catalog.yml](simulation/catalog.yml) yet, add it there too.
 
 ## Simulated and real telemetry
@@ -149,9 +154,24 @@ Real machines are noisy, so events are labeled by process tree instead of by tim
 
 Real logs have already changed this project. The exported Sysmon logs showed `%VAR%` as `%%VAR%%` in a command line, so the simulated events now match what Windows logged.
 
+## Game security detections
+
+Real game tampering is the project's niche. These rules protect [FakeQuest](game/), a harmless stand-in game with a pretend license check, so nothing here touches a real game or real anti-cheat software.
+
+| Threat | Rule watches for | Sysmon event | ATT&CK |
+| --- | --- | --- | --- |
+| **License bypass** | A command writing a license server entry to the `hosts` file | Process creation | T1565.001 |
+| **Mod or crack injection** | The game loading a system-named DLL from outside the Windows folder | DLL load | T1574.001 |
+| **Memory tampering** | A process requesting write access to the game's memory | Process access | T1055 |
+
+The tests are harmless on purpose. The license domain uses the reserved `.invalid` name, the planted DLL is an unmodified signed Windows file, and the memory tool closes its handle without reading or writing anything. **This project detects tampering, so it doesn't include cracks, cheats, or bypass techniques.**
+
+ATT&CK describes attacks on organizations, so a player tampering with their own copy of a game only partly fits. Each rule keeps the closest technique and adds its own `x_game_threat` label.
+
 ## Scope and limitations
 
-- **Coverage is small.** Only process creation is covered (`DeviceProcessEvents` for KQL), with two Atomic tests in the catalog so far.
+- **Coverage is small.** The catalog has two Atomic tests and three game tests, and KQL rules can only use `DeviceProcessEvents`.
+- **Game rules are tied to FakeQuest.** Protecting a real game means changing the game name in each rule, and the access values and DLL names need tuning for that game.
 - **A real pass applies to one environment.** It covers a clean Windows Server VM with a minimal Sysmon configuration, not every Windows setup, and it doesn't measure false positives on real user activity.
 - **The rule engines are subsets.** Sigma covers the common modifiers and conditions, with no aggregations or keyword searches. KQL covers single-table filters only. Anything unsupported returns exit `2`, never a guessed verdict.
 - **Mock matching is approximate.** `has` approximates Kusto's term index, and regexes run on Python's engine rather than RE2.

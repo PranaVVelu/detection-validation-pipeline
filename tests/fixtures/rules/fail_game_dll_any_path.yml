@@ -1,0 +1,11 @@
+# Fires on the planted DLL, but also on the game loading the real one from System32.
+title: "Negative control: game DLL from any path"
+id: 00000000-0000-4000-8000-000000000009
+logsource: {category: image_load, product: windows}
+tags: [attack.t1574.001]
+detection:
+  selection:
+    Image|endswith: '\FakeQuest.exe'
+    ImageLoaded|endswith: '\version.dll'
+  condition: selection
+x_game_test: game-dll-sideload

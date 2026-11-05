@@ -29,7 +29,7 @@ class Rule:
     title: str
     kind: str
     techniques: List[str]
-    atomic_test: str
+    test_id: str
     category: str
     matcher: Callable[[Mapping[str, Any]], bool]
 
@@ -42,6 +42,11 @@ def _require(metadata: Mapping[str, Any], key: str, source: str) -> str:
     if not value:
         raise RuleError(f"{source}: missing required field {key!r}")
     return str(value)
+
+
+def _sigma_test_id(doc: Mapping[str, Any], source: str) -> str:
+    """A rule proves itself with an Atomic test or one of this project's game tests."""
+    return str(doc.get("x_game_test") or _require(doc, "x_atomic_test", source))
 
 
 def _parse_sigma(text: str, source: str) -> Rule:
@@ -59,7 +64,7 @@ def _parse_sigma(text: str, source: str) -> Rule:
         title=_require(doc, "title", source),
         kind="sigma",
         techniques=[match.group(1).upper() for match in tags if match],
-        atomic_test=_require(doc, "x_atomic_test", source),
+        test_id=_sigma_test_id(doc, source),
         category=_require(logsource, "category", f"{source} logsource"),
         matcher=compile_sigma(doc.get("detection")),
     )
@@ -73,7 +78,7 @@ def _parse_kql(text: str, source: str) -> Rule:
         title=_require(metadata, "title", source),
         kind="kql",
         techniques=[item.strip().upper() for item in metadata.get("techniques", "").split(",") if item.strip()],
-        atomic_test=_require(metadata, "atomic_test", source),
+        test_id=_require(metadata, "atomic_test", source),
         category=category,
         matcher=matcher,
     )

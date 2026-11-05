@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a rule's Atomic test on this machine and collect the real Sysmon logs.
+"""Run a rule's validation test on this machine and collect the real Sysmon logs.
 
 This EXECUTES the test, so it belongs only on a disposable Windows machine with
 Sysmon installed. It writes the same JSONL format as simulate_atomic.py, so the
@@ -24,12 +24,21 @@ from typing import Any, Dict, List
 import yaml
 
 SCRIPTS = Path(__file__).resolve().parent
+GAME_DIR = SCRIPTS.parent / "game"
 sys.path.insert(0, str(SCRIPTS.parent / "src"))
 
-from dvp.catalog import DEFAULT_CATALOG, AtomicTest, load_atomic_test  # noqa: E402
+from dvp.catalog import DEFAULT_CATALOG, ValidationTest, load_test  # noqa: E402
 from dvp.errors import PipelineError  # noqa: E402
 from dvp.rules import load_rule  # noqa: E402
-from dvp.sysmon import parse_export, select_process_tree, select_test_execution, to_pipeline_event  # noqa: E402
+from dvp.sysmon import (  # noqa: E402
+    PROCESS_CREATE_EVENT_ID,
+    parse_export,
+    process_creations,
+    select_process_tree,
+    select_scenario_events,
+    select_test_execution,
+    to_pipeline_event,
+)
 
 ATOMIC_URL = "https://raw.githubusercontent.com/redcanaryco/atomic-red-team/{commit}/atomics/{technique}/{technique}.yaml"
 BENIGN_TIMEOUT_SECONDS = 15
@@ -38,7 +47,7 @@ SYSMON_SETTLE_SECONDS = 5
 POWERSHELL = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]
 
 
-def verify_upstream(definition: str, test: AtomicTest) -> None:
+def verify_upstream(definition: str, test: ValidationTest) -> None:
     """Refuse to run if the pinned Atomic definition differs from the catalog."""
     for atomic in yaml.safe_load(definition).get("atomic_tests", []):
         if atomic.get("auto_generated_guid") == test.guid:
@@ -49,7 +58,7 @@ def verify_upstream(definition: str, test: AtomicTest) -> None:
     raise PipelineError(f"Atomic test {test.guid} is not in the {test.technique} definition")
 
 
-def fetch_atomic(test: AtomicTest, atomics_dir: Path) -> None:
+def fetch_atomic(test: ValidationTest, atomics_dir: Path) -> None:
     """Download only the definition this test needs, at the commit the catalog pins."""
     url = ATOMIC_URL.format(commit=test.upstream_commit, technique=test.technique)
     try:
@@ -64,7 +73,7 @@ def fetch_atomic(test: AtomicTest, atomics_dir: Path) -> None:
     target.write_text(definition, encoding="utf-8")
 
 
-def run_benign_commands(test: AtomicTest, workdir: Path) -> List[int]:
+def run_benign_commands(test: ValidationTest, workdir: Path) -> List[int]:
     """Run the catalog's baseline for real, returning each root process ID."""
     pids = []
     for template in test.benign_events:
@@ -81,7 +90,7 @@ def run_benign_commands(test: AtomicTest, workdir: Path) -> List[int]:
     return pids
 
 
-def run_atomic(test: AtomicTest, atomics_dir: Path, workdir: Path) -> int:
+def run_atomic(test: ValidationTest, atomics_dir: Path, workdir: Path) -> int:
     """Run the test through Invoke-AtomicTest, returning the root process ID."""
     command = [*POWERSHELL, str(SCRIPTS / "run_atomic.ps1"), "-Technique", test.technique,
                "-TestGuid", test.guid, "-AtomicsPath", str(atomics_dir)]
@@ -99,32 +108,75 @@ def export_sysmon(since: datetime, raw_path: Path) -> List[Dict[str, Any]]:
     return parse_export(raw_path.read_text(encoding="utf-8").splitlines())
 
 
-def label_events(raw_events: List[Dict[str, Any]], test: AtomicTest, run_id: str,
+def label_events(raw_events: List[Dict[str, Any]], test: ValidationTest, run_id: str,
                  atomic_pid: int, benign_pids: List[int]) -> List[Dict[str, Any]]:
     """Label the test's own processes as attack, and each baseline process tree as benign."""
+    creations = process_creations(raw_events)
     labeled = [to_pipeline_event(event, test, run_id, "attack")
-               for event in select_test_execution(raw_events, atomic_pid, test.command_marker)]
+               for event in select_test_execution(creations, atomic_pid, test.command_marker)]
     for pid in benign_pids:
         labeled += [to_pipeline_event(event, test, run_id, "benign")
-                    for event in select_process_tree(raw_events, pid, include_root=True)]
+                    for event in select_process_tree(creations, pid, include_root=True)]
     return labeled
+
+
+def run_game_scenario(test: ValidationTest, scenario: str, workdir: Path) -> int:
+    """Run one side of a game test, returning the root process ID."""
+    command = [*POWERSHELL, str(GAME_DIR / "scenarios" / f"{test.guid}.ps1"), "-Scenario", scenario,
+               "-GameDir", str(GAME_DIR / "bin")]
+    process = subprocess.Popen(command, cwd=workdir, stdin=subprocess.DEVNULL)
+    if process.wait(timeout=180) != 0:
+        raise PipelineError(f"Scenario {scenario} of {test.guid} failed with exit code {process.returncode}")
+    return process.pid
+
+
+def label_game_events(raw_events: List[Dict[str, Any]], test: ValidationTest, run_id: str,
+                      attack_pid: int, benign_pid: int) -> List[Dict[str, Any]]:
+    labeled = []
+    for scenario, pid in (("attack", attack_pid), ("benign", benign_pid)):
+        labeled += [to_pipeline_event(event, test, run_id, scenario)
+                    for event in select_scenario_events(raw_events, pid)]
+    return labeled
+
+
+def has_both_scenarios(events: List[Dict[str, Any]], category: str) -> bool:
+    """Both sides must have logged the event type the rule reads, or the verdict is hollow."""
+    relevant = {event["_meta"]["scenario"] for event in events if event["_meta"]["category"] == category}
+    return relevant == {"attack", "benign"}
+
+
+def wait_for_game_events(since: datetime, raw_path: Path, test: ValidationTest, run_id: str,
+                         attack_pid: int, benign_pid: int) -> List[Dict[str, Any]]:
+    deadline = time.monotonic() + SYSMON_WAIT_SECONDS
+    while True:
+        raw_events = export_sysmon(since, raw_path)
+        labeled = label_game_events(raw_events, test, run_id, attack_pid, benign_pid)
+        if has_both_scenarios(labeled, test.category):
+            time.sleep(SYSMON_SETTLE_SECONDS)
+            return label_game_events(export_sysmon(since, raw_path), test, run_id, attack_pid, benign_pid)
+        if time.monotonic() >= deadline:
+            print(describe_processes(raw_events), file=sys.stderr)
+            raise PipelineError(f"Sysmon didn't log {test.category} events for both scenarios of {test.guid}")
+        time.sleep(3)
 
 
 def describe_processes(raw_events: List[Dict[str, Any]]) -> str:
     """List everything Sysmon recorded, so a missing command can be diagnosed from the job log."""
-    lines = [f"Sysmon recorded {len(raw_events)} process(es):"]
+    creations = process_creations(raw_events)
+    other = sum(event.get("EventID") != PROCESS_CREATE_EVENT_ID for event in raw_events)
+    lines = [f"Sysmon recorded {len(creations)} process(es) and {other} other event(s):"]
     lines += [f"  pid={event.get('ProcessId')} parent={event.get('ParentProcessId')} "
-              f"{event.get('Image')}: {event.get('CommandLine')}" for event in raw_events]
+              f"{event.get('Image')}: {event.get('CommandLine')}" for event in creations]
     return "\n".join(lines)
 
 
-def wait_for_events(since: datetime, raw_path: Path, test: AtomicTest, run_id: str,
+def wait_for_events(since: datetime, raw_path: Path, test: ValidationTest, run_id: str,
                     atomic_pid: int, benign_pids: List[int]) -> List[Dict[str, Any]]:
     """Poll until every tree has logged, because Sysmon writes asynchronously."""
     deadline = time.monotonic() + SYSMON_WAIT_SECONDS
     while True:
         raw_events = export_sysmon(since, raw_path)
-        seen = {str(event.get("ProcessId")) for event in raw_events}
+        seen = {str(event.get("ProcessId")) for event in process_creations(raw_events)}
         labeled = label_events(raw_events, test, run_id, atomic_pid, benign_pids)
         attack = [event for event in labeled if event["_meta"]["scenario"] == "attack"]
         if attack and all(str(pid) in seen for pid in benign_pids):
@@ -151,17 +203,22 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        test = load_atomic_test(load_rule(args.rule).atomic_test, args.catalog)
+        test = load_test(load_rule(args.rule).test_id, args.catalog)
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.raw_out.parent.mkdir(parents=True, exist_ok=True)
         since = datetime.now(timezone.utc) - timedelta(seconds=2)
 
         with tempfile.TemporaryDirectory() as temp:
             workdir = Path(temp)
-            fetch_atomic(test, workdir / "atomics")
-            benign_pids = run_benign_commands(test, workdir)
-            atomic_pid = run_atomic(test, workdir / "atomics", workdir)
-            events = wait_for_events(since, args.raw_out.resolve(), test, args.run_id, atomic_pid, benign_pids)
+            if test.kind == "game":
+                benign_pid = run_game_scenario(test, "benign", workdir)
+                attack_pid = run_game_scenario(test, "attack", workdir)
+                events = wait_for_game_events(since, args.raw_out.resolve(), test, args.run_id, attack_pid, benign_pid)
+            else:
+                fetch_atomic(test, workdir / "atomics")
+                benign_pids = run_benign_commands(test, workdir)
+                atomic_pid = run_atomic(test, workdir / "atomics", workdir)
+                events = wait_for_events(since, args.raw_out.resolve(), test, args.run_id, atomic_pid, benign_pids)
     except (PipelineError, OSError, subprocess.SubprocessError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -172,7 +229,9 @@ def main() -> int:
 
     print(f"Collected {len(events)} real event(s) for {test.technique} '{test.name}':")
     for event in events:
-        print(f"  [{event['_meta']['scenario']}] {event.get('Image')}: {event.get('CommandLine')}")
+        detail = event.get("CommandLine") or event.get("ImageLoaded") or \
+            f"{event.get('SourceImage')} -> {event.get('TargetImage')} access={event.get('GrantedAccess')}"
+        print(f"  [{event['_meta']['scenario']}] {event['_meta']['category']} {event.get('Image', '')}: {detail}")
     return 0
 
 

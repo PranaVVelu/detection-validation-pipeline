@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Exports Sysmon process creation events as raw XML, one event per line.
+    Exports the Sysmon events rules can use as raw XML, one event per line.
 #>
 param(
     [Parameter(Mandatory)][datetime]$Since,
@@ -8,7 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$filter = @{ LogName = 'Microsoft-Windows-Sysmon/Operational'; Id = 1; StartTime = $Since }
+$filter = @{ LogName = 'Microsoft-Windows-Sysmon/Operational'; Id = 1, 7, 10; StartTime = $Since }
 
 $lines = Get-WinEvent -FilterHashtable $filter -Oldest |
     ForEach-Object { $_.ToXml() -replace "\r?\n", '&#10;' }

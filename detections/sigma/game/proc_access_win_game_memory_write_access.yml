@@ -1,0 +1,33 @@
+title: Process Requested Write Access to Game Memory
+id: 4d1b8e72-c6f5-49a3-b07e-5a92d3c1f806
+status: experimental
+description: >
+  Detects a process requesting the access rights needed to read and write the
+  game's memory, as a memory cheat would. Full access (0x1FFFFF) is deliberately
+  not listed, because the process that launches a game also receives it.
+references:
+  - https://attack.mitre.org/techniques/T1055/
+author: PranaVVelu
+date: 2026-11-05
+tags:
+  - attack.defense-evasion
+  - attack.t1055
+logsource:
+  category: process_access
+  product: windows
+detection:
+  selection:
+    TargetImage|endswith: '\FakeQuest.exe'
+    GrantedAccess:
+      - '0x438'
+      - '0x1438'
+      - '0x1038'
+      - '0x38'
+  filter_antivirus:
+    SourceImage|endswith: '\MsMpEng.exe'
+  condition: selection and not filter_antivirus
+falsepositives:
+  - Debuggers and crash reporters
+level: high
+x_game_threat: memory-tampering
+x_game_test: game-memory-access
