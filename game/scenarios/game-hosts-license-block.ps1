@@ -13,6 +13,7 @@ $commands = if ($Scenario -eq 'attack') {
     , 'echo 127.0.0.1 license.fakequest.invalid>> C:\Windows\System32\drivers\etc\hosts'
 } else {
     'type C:\Windows\System32\drivers\etc\hosts',
+    'findstr license C:\Windows\System32\drivers\etc\hosts & exit /b 0',
     'echo 127.0.0.1 dev.local>> C:\Windows\System32\drivers\etc\hosts'
 }
 

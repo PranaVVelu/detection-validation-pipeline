@@ -9,8 +9,8 @@ variants:
   - id: hosts-add-content
     rule: detections/sigma/game/proc_creation_win_game_license_server_hosts_block.yml
     name: Edit hosts with PowerShell instead of a cmd redirect
-    expected: missed
-    why: The rule looks for a > in the command.
+    expected: caught
+    why: The rule first only looked for a > in the command, and now knows the PowerShell ways to write a file.
     events:
       - Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
         CommandLine: '"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value ''127.0.0.1 license.fakequest.invalid''"'
@@ -55,8 +55,8 @@ variants:
   - id: memory-write-only
     rule: detections/sigma/game/proc_access_win_game_memory_write_access.yml
     name: Request only the rights needed to write memory
-    expected: missed
-    why: The rule's list of values assumes read access is requested too.
+    expected: caught
+    why: The rule's list of values first assumed read access was requested too.
     events:
       - SourceImage: C:\Games\FakeQuest\MemoryPeek.exe
         TargetImage: C:\Games\FakeQuest\FakeQuest.exe
@@ -65,8 +65,8 @@ variants:
   - id: bootleg-renamed
     rule: detections/sigma/game/proc_creation_win_game_unofficial_build.yml
     name: Run the modified copy under a different file name
-    expected: missed
-    why: The rule only checks files named FakeQuest.exe.
+    expected: caught
+    why: The rule first only checked the file name, and now also reads the name stored inside the file.
     events:
       - Image: C:\Games\FakeQuest\bootleg\Quest.exe
         CommandLine: '"C:\Games\FakeQuest\bootleg\Quest.exe" 2'

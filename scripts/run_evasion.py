@@ -50,6 +50,7 @@ from dvp.sysmon import select_scenario_events  # noqa: E402
 DEFAULT_VARIANTS = ROOT / "simulation" / "variants.yml"
 VARIANTS_DIR = GAME_DIR / "variants"
 OUTCOMES = {"caught", "missed"}
+EVIDENCE_FIELDS = ("Image", "CommandLine", "OriginalFileName", "SourceImage", "GrantedAccess")
 NO_PROCESS = -1  # A variation only has an attack side.
 
 
@@ -108,6 +109,14 @@ def score(rule: Rule, run_id: str, events: List[Dict[str, Any]]) -> int:
     return len(store.alerts(run_id, rule.id))
 
 
+def print_evidence(variant_id: str, events: List[Dict[str, Any]]) -> None:
+    """Show the logged values that decide a result, so a miss can be understood from the job log."""
+    for event in events:
+        fields = {name: event[name] for name in EVIDENCE_FIELDS if event.get(name)}
+        if fields and event["_meta"]["category"] != "image_load":
+            print(f"  [{variant_id}] {event['_meta']['category']} {fields}")
+
+
 def score_variant(variant: Dict[str, Any], mode: str, run_id: str, catalog: Path,
                   raw_out: Optional[Path], workdir: Path) -> Dict[str, Any]:
     rule = load_rule(ROOT / variant["rule"])
@@ -126,6 +135,7 @@ def score_variant(variant: Dict[str, Any], mode: str, run_id: str, catalog: Path
 
     alerts = score(rule, run_id, events)
     actual = "caught" if alerts else "missed"
+    print_evidence(variant["id"], events)
     return {
         "id": variant["id"],
         "name": variant["name"],

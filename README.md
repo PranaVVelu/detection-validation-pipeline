@@ -180,22 +180,44 @@ Some abuse only shows up as a pattern, so these rules count activity over time u
 
 Both rules count different values, not attempts. Two negative controls show why: the same rules counting attempts fire on those normal players, and the pipeline fails them.
 
+## Evasion scorecard
+
+Passing against one version of an attack doesn't say much about the next version, so [`simulation/variants.yml`](simulation/variants.yml) records ten harmless variations and what each rule does with them. Real runs execute them on a disposable Windows VM. A result that differs from the record fails the run in either direction, and a variation that logged nothing is an error rather than a miss.
+
+Before any fixes, the rules caught **2 of 10** on real logs. They now catch **5 of 10**:
+
+| Attack | Variation | Before | Now | Why |
+| --- | --- | --- | --- | --- |
+| `hosts` edit | PowerShell's `Add-Content` | Missed | **Caught** | The rule now knows PowerShell's file-writing commands |
+| `hosts` edit | From a script file | Missed | Missed | The command line only shows the script's name, so this needs file monitoring |
+| DLL planting | Uppercase `WINMM.DLL` | Caught | Caught | Matching ignores case |
+| DLL planting | Next to a renamed game | Missed | Missed | The rule and the Sysmon config go by the game's name, because logging every DLL load is too noisy |
+| Memory tampering | Full access | Missed | Missed | Launchers also request full access, so this is left out to avoid false alerts |
+| Memory tampering | Write-only access | Missed | **Caught** | The rule now covers write access without read access |
+| Bootleg copy | Renamed file | Missed | **Caught** | The rule now reads the name stored inside the file |
+| Key guessing | Changing machine IDs | Caught | Caught | The rule counts by address |
+| Key guessing | Many addresses | Missed | Missed | Counting across addresses needs tuning against real traffic |
+| Key sharing | Same machine ID | Missed | Missed | The rule trusts the ID the client reports |
+
+These are the gaps found so far, not all of them. The variations only cover the game and license rules, and each one is a test of this project's fake game.
+
 ## Roadmap
 
 1. ~~Validate rules against simulated attacks in CI~~
 2. ~~Validate against real Windows logs, and add game tampering rules~~
 3. ~~Detect license server abuse by counting events over time~~
 4. ~~Spot bootleg copies: game builds that don't match the official release~~
-5. **Evasion testing:** try harmless variations of each attack, and score which ones get past each rule
+5. ~~Try harmless variations of each attack, and score which ones get past each rule~~
 6. **False-positive testing:** measure each rule's noise against realistic normal activity
 7. **Real SIEM:** run the rules in a real SIEM as well as the mock
 8. **Public dashboard:** publish coverage, the latest results, and known gaps
 
 ## Scope and limitations
 
-- **License traffic is scripted.** The server and its logs are real, but the requests come from test scripts on one machine, so every request has the same address. Real thresholds need tuning against real player traffic, and an attacker spreading guesses across many addresses wouldn't trigger the guessing rule.
+- **Known blind spots remain.** The [evasion scorecard](#evasion-scorecard) lists what the rules still miss.
+- **License traffic is scripted.** The server and its logs are real, but the requests come from test scripts on one machine, so every request has the same address. Real thresholds need tuning against real player traffic, and the scorecard records that spreading guesses across addresses gets past the guessing rule.
 - **Coverage is small.** The catalog has two Atomic tests, four game tests, and two license tests, and KQL rules can only use `DeviceProcessEvents`.
-- **The bootleg rule goes by file name.** It only checks files named `FakeQuest.exe`, so a renamed copy gets past it. Hashes also only help when the official list is complete, so a missing patch would look like a bootleg.
+- **The bootleg rule depends on its list.** An official patch that isn't on the list yet would look like a bootleg. A copy that also changes the name stored inside the file would get past it.
 - **Game rules are tied to FakeQuest.** Protecting a real game means changing the game name in each rule, and the access values and DLL names need tuning for that game.
 - **A real pass applies to one environment.** It covers a clean Windows Server VM with a minimal Sysmon configuration, not every Windows setup, and it doesn't measure false positives on real user activity.
 - **The rule engines are subsets.** Sigma covers the common modifiers, conditions, and `expand` placeholders, plus `event_count` and `value_count` correlations, with no keyword searches. KQL covers single-table filters only. Anything unsupported returns exit `2`, never a guessed verdict.

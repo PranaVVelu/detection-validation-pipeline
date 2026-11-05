@@ -111,6 +111,10 @@ Game tests work like Atomic tests, except that each one is a script in `game/sce
 4. **Write the rule** with `x_game_test` and an `x_game_threat` label.
 5. **Push to a `telemetry/**` branch**, then compare the real logs with what you modeled and fix any differences.
 
+### Evasion variations
+
+To add a variation, add a script to `game/variants/` named after its ID, then add an entry to `simulation/variants.yml` with its expected result, the reason, and modeled events. Run `make evasion` to check the modeled events, then push to a `telemetry/**` branch to run it for real. Keep variations harmless and aimed at the fake game. When you widen a rule to catch one, add a normal action that the wider rule could wrongly match to its benign side.
+
 ### Values that change by environment
 
 The official game hash changes with every build, so it can't be written into a rule. The rule uses Sigma's `expand` modifier with a placeholder such as `%official_fakequest_hashes%` instead, as a real SIEM would use a lookup table. Simulated runs read the values from `simulation/placeholders.yml`. Real runs read the file `game/build.ps1` writes, through the `DVP_PLACEHOLDERS` environment variable. A placeholder with no values returns exit `2`, because an empty allowlist would flag every build.

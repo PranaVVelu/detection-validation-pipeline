@@ -23,6 +23,8 @@ detection:
       - '0x1438'
       - '0x1038'
       - '0x38'
+      - '0x1028'
+      - '0x28'
   filter_antivirus:
     SourceImage|endswith: '\MsMpEng.exe'
   condition: selection and not filter_antivirus
