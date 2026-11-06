@@ -1,8 +1,10 @@
 # Detection Validation Pipeline
 
-![Detection Validation](https://github.com/PranaVVelu/detection-validation-pipeline/actions/workflows/detect-test.yml/badge.svg)
+![Detection Validation](https://github.com/PranaVVelu/detection-validation-pipeline/actions/workflows/detect-test.yml/badge.svg) ![Real Telemetry Validation](https://github.com/PranaVVelu/detection-validation-pipeline/actions/workflows/real-telemetry.yml/badge.svg)
 
 **[See the live results](https://pranavvelu.github.io/detection-validation-pipeline/)**, rebuilt from every real run on `main`.
+
+**Proof in one click:** [this green run on `main`](https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41999719846) passed all 10 rules on real Windows logs, matched the recorded evasion and noise scorecards, agreed with Elasticsearch on 125 of 127 results, and published the dashboard.
 
 **Detection-as-code with a real test step.** When a Sigma or KQL rule is added or changed, CI replays telemetry modeled on the rule's mapped Atomic Red Team test through a mock SIEM, then blocks the merge unless the rule fires on the attack and stays quiet on normal activity.
 
@@ -59,33 +61,21 @@ RESULT: FAIL
 
 ## Quick start
 
-You need Python 3.9 or later. Docker is only needed for `make validate-docker`.
+You need Python 3.9 or later. On Windows, type `python` instead of `python3`. A [virtual environment](https://docs.python.org/3/library/venv.html) is a good idea but not required.
 
 ```bash
-python3 -m venv .venv
+python3 -m pip install -r requirements-dev.txt
 ```
 
 ```bash
-source .venv/bin/activate
+python3 -m pytest
 ```
 
 ```bash
-make setup
+make validate
 ```
 
-```bash
-make test
-```
-
-```bash
-make validate RULE=detections/kql/powershell_encoded_command.kql
-```
-
-```bash
-make validate RULE=tests/fixtures/rules/fail_too_narrow.yml
-```
-
-The last command fails on purpose.
+The last command validates the encoded PowerShell rule end to end. To watch the pipeline fail a bad rule, run `make validate RULE=tests/fixtures/rules/fail_too_narrow.yml`. Docker is only needed for `make validate-docker`, which runs the isolated containers as CI does.
 
 ## Repository layout
 
