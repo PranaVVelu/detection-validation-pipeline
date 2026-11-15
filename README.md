@@ -4,6 +4,8 @@
 
 **[See the live results](https://pranavvelu.github.io/detection-validation-pipeline/)**, rebuilt from every real run on `main`.
 
+**[Read the case study](https://www.pranavvelupillai.com/work/detection-validation-pipeline)** for the decisions, tradeoffs and what the results do and don't prove.
+
 **Proof in one click:** [this green run on `main`](https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41999719846) passed all 10 rules on real Windows logs, matched the recorded evasion and noise scorecards, agreed with Elasticsearch on 125 of 127 results, and published the dashboard.
 
 **Detection-as-code with a real test step.** When a Sigma or KQL rule is added or changed, CI replays telemetry modeled on the rule's mapped Atomic Red Team test through a mock SIEM, then blocks the merge unless the rule fires on the attack and stays quiet on normal activity.
