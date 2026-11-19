@@ -32,6 +32,14 @@ REPO_URL = "https://github.com/PranaVVelu/detection-validation-pipeline"
 PAGES_URL = "https://pranavvelu.github.io/detection-validation-pipeline/"
 NAVIGATOR_URL = "https://mitre-attack.github.io/attack-navigator/"
 LAYER_FILE = "attack-layer.json"
+HISTORY_FILE = "history.json"
+HISTORY_LIMIT = 60
+METRICS = (  # (label, short name, value key, total key)
+    ("Rules passing on real logs", "Rules passing", "rules_passed", "rules_total"),
+    ("Evasion variations caught", "Variations caught", "evasion_caught", "evasion_total"),
+    ("Normal scenarios that stay quiet", "Quiet scenarios", "noise_quiet", "noise_total"),
+    ("Results Elasticsearch agrees with", "Elastic agrees", "elastic_agree", "elastic_total"),
+)
 _TACTIC_TAG = re.compile(r"^attack\.([a-z]+(?:-[a-z]+)*)$")
 DASHBOARD_DIR = ROOT / "dashboard"
 SOURCE_LABELS = {
@@ -173,6 +181,67 @@ def coverage_rows(entries: List[Dict[str, Any]]) -> str:
     return f'<ul class="rows">{"".join(rows)}</ul>'
 
 
+def load_history(previous: Optional[Path]) -> List[Dict[str, Any]]:
+    """Continue the published history, or start from the seed of earlier real runs."""
+    for path in (previous, DASHBOARD_DIR / "history-seed.json"):
+        document = read_json(path) if path else None
+        if document and isinstance(document.get("runs"), list):
+            return document["runs"]
+    return []
+
+
+def extend_history(runs: List[Dict[str, Any]], run: "RunInfo", summary: Dict[str, Any], mode: str) -> List[Dict[str, Any]]:
+    """Add this run once. Simulated previews never enter the history."""
+    if mode != "real":
+        return runs
+    scores = {key: value for key, value in summary.items() if key != "healthy" and value is not None}
+    entry = {"label": f"Commit {run.commit[:7]}" if run.commit else "Latest run", "url": run.url,
+             "finished": run.finished, "summary": scores}
+    kept = [item for item in runs if not run.url or item.get("url") != run.url]
+    return (kept + [entry])[-HISTORY_LIMIT:]
+
+
+def sparkline(runs: List[Dict[str, Any]], value_key: str, total_key: str) -> str:
+    """One metric across runs, as a share of its total. Each point's tooltip names its run."""
+    points = [(index, item["summary"][value_key] / item["summary"][total_key], item)
+              for index, item in enumerate(runs)
+              if item["summary"].get(value_key) is not None and item["summary"].get(total_key)]
+    if not points:
+        return '<p class="note">Not measured yet.</p>'
+    width, height, pad = 320, 64, 6
+    span = max(len(runs) - 1, 1)
+    def x(index: int) -> float:
+        return pad + (width - 2 * pad) * index / span
+    def y(share: float) -> float:
+        return height - pad - (height - 2 * pad) * share
+    path = " ".join(f"{'M' if n == 0 else 'L'}{x(i):.1f},{y(s):.1f}" for n, (i, s, _) in enumerate(points))
+    dots = "".join(
+        f'<circle cx="{x(i):.1f}" cy="{y(s):.1f}" r="4"><title>{escape(item["label"])}, {escape(item["finished"])}: '
+        f'{item["summary"][value_key]} of {item["summary"][total_key]}</title></circle>' for i, s, item in points)
+    return (f'<svg class="spark" viewBox="0 0 {width} {height}" role="img" aria-label="Share over the last {len(points)} measured runs">'
+            f'<line class="base" x1="{pad}" x2="{width - pad}" y1="{y(0):.1f}" y2="{y(0):.1f}"/>'
+            f'<path d="{path}"/>{dots}</svg>')
+
+
+def history_section(runs: List[Dict[str, Any]]) -> str:
+    charts = []
+    for label, _, value_key, total_key in METRICS:
+        measured = [item["summary"] for item in runs if item["summary"].get(value_key) is not None]
+        change = ""
+        if measured:
+            first, last = measured[0], measured[-1]
+            change = f"{first[value_key]} of {first[total_key]} at first, {last[value_key]} of {last[total_key]} now"
+        charts.append(f'<div class="tile"><p class="label">{escape(label)}</p>{sparkline(runs, value_key, total_key)}'
+                      f'<p class="note">{escape(change or "Not measured yet")}</p></div>')
+    rows = "".join(
+        f'<li><div><strong><a href="{escape(item["url"], quote=True)}">{escape(item["label"])}</a></strong>'
+        f'<span class="sub">{escape(item["finished"])}</span></div><div></div><div class="why">'
+        + escape(" · ".join(f"{short} {item['summary'][value]} of {item['summary'][total]}"
+                            for _, short, value, total in METRICS if item["summary"].get(value) is not None))
+        + "</div></li>" for item in reversed(runs[-10:]))
+    return f'<div class="tiles">{"".join(charts)}</div><ul class="rows history">{rows}</ul>'
+
+
 def summarize(data: Dict[str, Any]) -> Dict[str, Any]:
     rules, evasion, noise, elastic = data["rules"], data["evasion"], data["noise"], data["elastic"]
     return {
@@ -286,7 +355,7 @@ def section(number: int, total: int, anchor: str, title: str, intro: str, body: 
 
 
 def render(data: Dict[str, Any], summary: Dict[str, Any], content: Dict[str, Any], recorded: Dict[str, str],
-           run: RunInfo, css: str) -> str:
+           run: RunInfo, css: str, history: List[Dict[str, Any]]) -> str:
     titles = {rule["file"]: rule["title"] for rule in data["rules"]}
     sigma_count = sum(rule["kind"] == "sigma" for rule in data["rules"])
     run_link = f'<a href="{escape(run.url, quote=True)}">{escape(run.commit[:7] or "Latest run")}</a>' if run.url else escape(run.commit[:7])
@@ -305,30 +374,34 @@ def render(data: Dict[str, Any], summary: Dict[str, Any], content: Dict[str, Any
     entries = coverage(data["rules"])
     navigator = f"{NAVIGATOR_URL}#layerURL={quote(PAGES_URL + LAYER_FILE, safe='')}"
     sections = [
-        section(1, 7, "rules", "The rules",
+        section(1, 8, "rules", "The rules",
                 "Each rule runs on its own disposable Windows machine against a real test. To pass, it has to alert on the attack and stay quiet on normal activity.",
                 f'<div class="cards">{"".join(rule_card(rule) for rule in data["rules"])}</div>'),
-        section(2, 7, "coverage", "Coverage map",
+        section(2, 8, "coverage", "Coverage map",
                 f"The {len(entries)} ATT&amp;CK techniques with a rule tested on real logs. A tested rule isn't full coverage of a technique: "
                 f"the next section shows variations that still get past them. "
                 f'<a href="{escape(navigator, quote=True)}">Open in ATT&amp;CK Navigator ↗</a> or download the <a href="{LAYER_FILE}">layer file</a>.',
                 coverage_rows(entries)),
-        section(3, 7, "evasion", "What gets past them",
+        section(3, 8, "evasion", "What gets past them",
                 "Harmless variations of each game and license attack. Misses are recorded rather than hidden, and any change from the record fails the run.",
                 evasion_rows(data["evasion"]) if data["evasion"] is not None else missing),
-        section(4, 7, "noise", "What sets them off by mistake",
+        section(4, 8, "noise", "What sets them off by mistake",
                 "Normal activity, scored against every rule. A rule that fires on normal behavior buries analysts in bad alerts.",
                 noise_rows(data["noise"], titles) if data["noise"] is not None else missing),
-        section(5, 7, "elastic", "A second opinion",
+        section(5, 8, "elastic", "A second opinion",
                 f"Rules pass or fail on engines this project wrote, so the real logs also go into a real Elasticsearch, which runs the {sigma_count} Sigma rules after standard conversion. These are the results where the two disagree.",
                 elastic_rows(data["elastic"], recorded) if data["elastic"] is not None else missing),
-        section(6, 7, "findings", "What real logs changed",
+        section(6, 8, "history", "Score history",
+                "Each real run on main adds its scores here, so the improvements and any slips stay visible. "
+                "Hover over a point to see its run. The earliest runs come from before the page kept its own history.",
+                history_section(history)),
+        section(7, 8, "findings", "What real logs changed",
                 "Mistakes and surprises that only showed up on real logs and real tools. Each one links to its run.",
                 f'<ol class="timeline">{findings}</ol>'),
-        section(7, 7, "limits", "What this doesn't prove", escape(content["ground_rules"]), f'<div class="split">{limits}</div>'),
+        section(8, 8, "limits", "What this doesn't prove", escape(content["ground_rules"]), f'<div class="split">{limits}</div>'),
     ]
     nav = "".join(f'<a href="#{anchor}">{label}</a>' for anchor, label in (
-        ("rules", "Rules"), ("coverage", "Coverage"), ("evasion", "Evasion"), ("noise", "Noise"), ("elastic", "Elasticsearch"), ("findings", "Findings"), ("limits", "Limits")))
+        ("rules", "Rules"), ("coverage", "Coverage"), ("evasion", "Evasion"), ("noise", "Noise"), ("elastic", "Elasticsearch"), ("history", "History"), ("findings", "Findings"), ("limits", "Limits")))
 
     return f"""<!doctype html>
 <html lang="en">
@@ -384,6 +457,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--run-url", default="")
     parser.add_argument("--commit", default="")
     parser.add_argument("--finished", required=True, help="when the run finished, as readable text")
+    parser.add_argument("--previous-history", type=Path, help="the published history.json, if there is one")
     args = parser.parse_args(argv)
 
     try:
@@ -398,8 +472,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     run = RunInfo(args.run_url, args.commit, args.finished)
+    history = extend_history(load_history(args.previous_history), run, summary, data["mode"])
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "index.html").write_text(render(data, summary, content, recorded, run, css), encoding="utf-8")
+    (args.out / "index.html").write_text(render(data, summary, content, recorded, run, css, history), encoding="utf-8")
+    (args.out / HISTORY_FILE).write_text(json.dumps({"runs": history}, indent=2), encoding="utf-8")
     entries = coverage(data["rules"])
     (args.out / LAYER_FILE).write_text(json.dumps(attack_layer(entries, run), indent=2), encoding="utf-8")
     (args.out / "results.json").write_text(json.dumps(

@@ -39,10 +39,10 @@ def artifacts(tmp_path):
     return folder
 
 
-def build(artifacts, tmp_path):
+def build(artifacts, tmp_path, *extra):
     out = tmp_path / "site"
     result = run_script("build_dashboard.py", "--artifacts", artifacts, "--out", out, "--commit", "abc1234def",
-                        "--run-url", "https://example.test/run", "--finished", "today")
+                        "--run-url", "https://example.test/run", "--finished", "today", *extra)
     return result, out
 
 
@@ -140,3 +140,42 @@ def test_page_links_the_layer_to_attack_navigator(artifacts, tmp_path):
     page = (out / "index.html").read_text(encoding="utf-8")
     assert "attack-navigator/#layerURL=https%3A%2F%2Fpranavvelu.github.io%2Fdetection-validation-pipeline%2Fattack-layer.json" in page
     assert 'href="https://attack.mitre.org/techniques/T1574/001/"' in page
+
+
+def history(out):
+    return json.loads((out / "history.json").read_text(encoding="utf-8"))["runs"]
+
+
+def test_history_starts_from_the_seed_and_adds_this_run(artifacts, tmp_path):
+    _, out = build(artifacts, tmp_path)
+    runs = history(out)
+    assert runs[0]["summary"]["evasion_caught"] == 2  # The first real evasion run, before any fixes.
+    assert runs[-1]["url"] == "https://example.test/run" and runs[-1]["summary"]["evasion_caught"] == 1
+    assert "healthy" not in runs[-1]["summary"]
+
+
+def test_history_continues_the_published_one_without_duplicates(artifacts, tmp_path):
+    previous = tmp_path / "previous.json"
+    write(previous, {"runs": [{"label": "Old", "url": "https://example.test/old", "finished": "then", "summary": {"rules_passed": 9, "rules_total": 10}},
+                              {"label": "Same", "url": "https://example.test/run", "finished": "today", "summary": {}}]})
+    _, out = build(artifacts, tmp_path, "--previous-history", previous)
+    assert [item["url"] for item in history(out)] == ["https://example.test/old", "https://example.test/run"]
+
+
+def test_a_missing_published_history_falls_back_to_the_seed(artifacts, tmp_path):
+    result, out = build(artifacts, tmp_path, "--previous-history", tmp_path / "missing.json")
+    assert result.returncode == 0, result.stderr
+    assert len(history(out)) > 1
+
+
+def test_previews_never_enter_the_history(artifacts, tmp_path):
+    write(artifacts / "evasion-scorecard/scorecard.json", {"mode": "simulated", "results": [variation()]})
+    _, out = build(artifacts, tmp_path)
+    assert all(item["url"] != "https://example.test/run" for item in history(out))
+
+
+def test_history_chart_names_each_point_and_skips_unmeasured_runs(artifacts, tmp_path):
+    _, out = build(artifacts, tmp_path)
+    page = (out / "index.html").read_text(encoding="utf-8")
+    assert "<title>Evasion scorecard added, 5 Nov 2026: 2 of 10</title>" in page
+    assert page.count('class="spark"') == 4

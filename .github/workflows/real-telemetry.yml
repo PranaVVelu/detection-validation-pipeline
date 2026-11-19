@@ -255,6 +255,10 @@ jobs:
         with:
           path: artifacts
 
+      - name: Fetch the published score history
+        # The first publish has no history yet, so a missing file isn't an error.
+        run: curl -fsSL https://pranavvelu.github.io/detection-validation-pipeline/history.json -o previous-history.json || rm -f previous-history.json
+
       - name: Build the page from this run's results
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -262,6 +266,7 @@ jobs:
         run: >
           python scripts/build_dashboard.py --artifacts artifacts --out site
           --run-url "$RUN_URL" --commit "$COMMIT" --finished "$(date -u '+%-d %b %Y, %H:%M UTC')"
+          --previous-history previous-history.json
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

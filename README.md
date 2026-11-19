@@ -243,6 +243,8 @@ The KQL rule isn't compared, because Elasticsearch can't run KQL as written here
 7. ~~Run the rules in a real SIEM as well as the mock~~
 8. ~~Publish coverage, the latest results, and known gaps on a [public dashboard](https://pranavvelu.github.io/detection-validation-pipeline/)~~
 
+Since then, the dashboard has gained an ATT&CK coverage map and a score history, and the Elasticsearch comparison now ignores case as Sigma does.
+
 ## Scope and limitations
 
 - **Rules aren't portable as they stand.** The [Elasticsearch comparison](#elasticsearch-comparison) shows that converted rules can behave differently, so they need testing in whichever SIEM runs them.

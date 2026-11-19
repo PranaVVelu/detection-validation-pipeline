@@ -1,0 +1,17 @@
+{
+  "note": "Real runs from before the dashboard kept its own history. A missing score wasn't measured in that run yet.",
+  "runs": [
+    {"label": "Evasion scorecard added", "url": "https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41988288045", "finished": "5 Nov 2026",
+     "summary": {"rules_passed": 10, "rules_total": 10, "evasion_caught": 2, "evasion_total": 10}},
+    {"label": "Three evasion gaps closed", "url": "https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41989150596", "finished": "5 Nov 2026",
+     "summary": {"rules_passed": 10, "rules_total": 10, "evasion_caught": 5, "evasion_total": 10}},
+    {"label": "Noise score added", "url": "https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41991611893", "finished": "5 Nov 2026",
+     "summary": {"rules_passed": 10, "rules_total": 10, "evasion_caught": 5, "evasion_total": 10, "noise_quiet": 4, "noise_total": 11}},
+    {"label": "Key guessing tuned", "url": "https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41992119587", "finished": "5 Nov 2026",
+     "summary": {"rules_passed": 10, "rules_total": 10, "evasion_caught": 5, "evasion_total": 10, "noise_quiet": 5, "noise_total": 11}},
+    {"label": "Elasticsearch comparison added", "url": "https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41994503119", "finished": "5 Nov 2026",
+     "summary": {"rules_passed": 10, "rules_total": 10, "evasion_caught": 5, "evasion_total": 10, "noise_quiet": 5, "noise_total": 11, "elastic_agree": 125, "elastic_total": 127}},
+    {"label": "Dashboard published", "url": "https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41999719846", "finished": "5 Nov 2026, 09:11 UTC",
+     "summary": {"rules_passed": 10, "rules_total": 10, "evasion_caught": 5, "evasion_total": 10, "noise_quiet": 5, "noise_total": 11, "elastic_agree": 125, "elastic_total": 127}}
+  ]
+}
