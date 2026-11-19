@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 import yaml
 
@@ -27,6 +29,10 @@ from dvp.errors import PipelineError  # noqa: E402
 from dvp.rules import RULE_SUFFIXES, load_rule  # noqa: E402
 
 REPO_URL = "https://github.com/PranaVVelu/detection-validation-pipeline"
+PAGES_URL = "https://pranavvelu.github.io/detection-validation-pipeline/"
+NAVIGATOR_URL = "https://mitre-attack.github.io/attack-navigator/"
+LAYER_FILE = "attack-layer.json"
+_TACTIC_TAG = re.compile(r"^attack\.([a-z]+(?:-[a-z]+)*)$")
 DASHBOARD_DIR = ROOT / "dashboard"
 SOURCE_LABELS = {
     "process_creation": "Sysmon process creation",
@@ -56,11 +62,13 @@ def rule_catalog() -> List[Dict[str, Any]]:
     for path in sorted((ROOT / "detections").rglob("*")):
         if path.suffix.lower() in RULE_SUFFIXES:
             rule = load_rule(path)
-            threat = ""
+            threat, tactics = "", []
             if rule.kind == "sigma":
-                threat = list(yaml.safe_load_all(path.read_text(encoding="utf-8")))[-1].get("x_game_threat", "")
+                doc = list(yaml.safe_load_all(path.read_text(encoding="utf-8")))[-1]
+                threat = doc.get("x_game_threat", "")
+                tactics = [match.group(1) for tag in doc.get("tags") or [] if (match := _TACTIC_TAG.match(str(tag)))]
             rules.append({"id": rule.id, "title": rule.title, "file": path.relative_to(ROOT).as_posix(), "kind": rule.kind,
-                          "techniques": rule.techniques, "category": rule.category, "threat": threat})
+                          "techniques": rule.techniques, "tactics": tactics, "category": rule.category, "threat": threat})
     return rules
 
 
@@ -101,6 +109,68 @@ def collect(artifacts: Path) -> Dict[str, Any]:
         "noise": (noise or {}).get("results"),
         "elastic": (elastic or {}).get("results"),
     }
+
+
+def coverage(rules: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Group the rules by ATT&CK technique. A technique counts as covered only by rules that pass on real logs."""
+    techniques: Dict[str, Dict[str, Any]] = {}
+    for rule in rules:
+        for technique in rule["techniques"]:
+            entry = techniques.setdefault(technique, {"technique": technique, "tactics": [], "rules": [], "passing": 0,
+                                                      "evasion_caught": 0, "evasion_total": 0})
+            entry["tactics"] += [tactic for tactic in rule["tactics"] if tactic not in entry["tactics"]]
+            entry["rules"].append(rule["title"])
+            entry["passing"] += rule["verdict"] == "PASS"
+            entry["evasion_caught"] += rule["evasion_caught"]
+            entry["evasion_total"] += rule["evasion_total"]
+    return sorted(techniques.values(), key=lambda entry: entry["technique"])
+
+
+def technique_url(technique: str) -> str:
+    return "https://attack.mitre.org/techniques/" + technique.replace(".", "/") + "/"
+
+
+def attack_layer(entries: List[Dict[str, Any]], run: "RunInfo") -> Dict[str, Any]:
+    """An ATT&CK Navigator layer. Green means every rule for the technique passes on real logs."""
+    def comment(entry: Dict[str, Any]) -> str:
+        evasion = (f" Evasion variations caught: {entry['evasion_caught']} of {entry['evasion_total']}."
+                   if entry["evasion_total"] else "")
+        return f"{entry['passing']} of {len(entry['rules'])} rules pass on real logs: {'; '.join(entry['rules'])}.{evasion}"
+
+    return {
+        "name": "Detection Validation Pipeline",
+        "versions": {"layer": "4.5", "navigator": "5.1.0"},
+        "domain": "enterprise-attack",
+        "description": f"Techniques with a rule tested on real Windows logs. Built from {run.url or 'the latest run'}. "
+                       "A colored technique has a tested rule, which is not the same as full coverage of it.",
+        "techniques": [{
+            "techniqueID": entry["technique"],
+            "score": len(entry["rules"]),
+            "color": "#0ca30c" if entry["passing"] == len(entry["rules"]) else "#fab219",
+            "comment": comment(entry),
+            "enabled": True,
+            "showSubtechniques": True,
+        } for entry in entries],
+        "legendItems": [
+            {"label": "Every rule passes on real logs", "color": "#0ca30c"},
+            {"label": "A rule failed or has no result", "color": "#fab219"},
+        ],
+        "hideDisabled": False,
+    }
+
+
+def coverage_rows(entries: List[Dict[str, Any]]) -> str:
+    rows = []
+    for entry in entries:
+        rules = len(entry["rules"])
+        state = (status("good", "Tested on real logs") if entry["passing"] == rules
+                 else status("warn", f"{entry['passing']} of {rules} rules pass"))
+        tactics = ", ".join(tactic.replace("-", " ").capitalize() for tactic in entry["tactics"]) or "Tactic not tagged"
+        evasion = f" Evasion variations caught: {entry['evasion_caught']} of {entry['evasion_total']}." if entry["evasion_total"] else ""
+        rows.append(f'<li><div><strong><a href="{escape(technique_url(entry["technique"]), quote=True)}">{escape(entry["technique"])}</a></strong>'
+                    f'<span class="sub">{escape(tactics)}</span></div><div>{state}</div>'
+                    f'<div class="why">{escape("; ".join(entry["rules"]))}.{escape(evasion)}</div></li>')
+    return f'<ul class="rows">{"".join(rows)}</ul>'
 
 
 def summarize(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -232,26 +302,33 @@ def render(data: Dict[str, Any], summary: Dict[str, Any], content: Dict[str, Any
                      for item in content["limits"])
     missing = '<p class="intro">This run saved no result for this.</p>'
 
+    entries = coverage(data["rules"])
+    navigator = f"{NAVIGATOR_URL}#layerURL={quote(PAGES_URL + LAYER_FILE, safe='')}"
     sections = [
-        section(1, 6, "rules", "The rules",
+        section(1, 7, "rules", "The rules",
                 "Each rule runs on its own disposable Windows machine against a real test. To pass, it has to alert on the attack and stay quiet on normal activity.",
                 f'<div class="cards">{"".join(rule_card(rule) for rule in data["rules"])}</div>'),
-        section(2, 6, "evasion", "What gets past them",
+        section(2, 7, "coverage", "Coverage map",
+                f"The {len(entries)} ATT&amp;CK techniques with a rule tested on real logs. A tested rule isn't full coverage of a technique: "
+                f"the next section shows variations that still get past them. "
+                f'<a href="{escape(navigator, quote=True)}">Open in ATT&amp;CK Navigator ↗</a> or download the <a href="{LAYER_FILE}">layer file</a>.',
+                coverage_rows(entries)),
+        section(3, 7, "evasion", "What gets past them",
                 "Harmless variations of each game and license attack. Misses are recorded rather than hidden, and any change from the record fails the run.",
                 evasion_rows(data["evasion"]) if data["evasion"] is not None else missing),
-        section(3, 6, "noise", "What sets them off by mistake",
+        section(4, 7, "noise", "What sets them off by mistake",
                 "Normal activity, scored against every rule. A rule that fires on normal behavior buries analysts in bad alerts.",
                 noise_rows(data["noise"], titles) if data["noise"] is not None else missing),
-        section(4, 6, "elastic", "A second opinion",
+        section(5, 7, "elastic", "A second opinion",
                 f"Rules pass or fail on engines this project wrote, so the real logs also go into a real Elasticsearch, which runs the {sigma_count} Sigma rules after standard conversion. These are the results where the two disagree.",
                 elastic_rows(data["elastic"], recorded) if data["elastic"] is not None else missing),
-        section(5, 6, "findings", "What real logs changed",
+        section(6, 7, "findings", "What real logs changed",
                 "Mistakes and surprises that only showed up on real logs and real tools. Each one links to its run.",
                 f'<ol class="timeline">{findings}</ol>'),
-        section(6, 6, "limits", "What this doesn't prove", escape(content["ground_rules"]), f'<div class="split">{limits}</div>'),
+        section(7, 7, "limits", "What this doesn't prove", escape(content["ground_rules"]), f'<div class="split">{limits}</div>'),
     ]
     nav = "".join(f'<a href="#{anchor}">{label}</a>' for anchor, label in (
-        ("rules", "Rules"), ("evasion", "Evasion"), ("noise", "Noise"), ("elastic", "Elasticsearch"), ("findings", "Findings"), ("limits", "Limits")))
+        ("rules", "Rules"), ("coverage", "Coverage"), ("evasion", "Evasion"), ("noise", "Noise"), ("elastic", "Elasticsearch"), ("findings", "Findings"), ("limits", "Limits")))
 
     return f"""<!doctype html>
 <html lang="en">
@@ -323,8 +400,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     run = RunInfo(args.run_url, args.commit, args.finished)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "index.html").write_text(render(data, summary, content, recorded, run, css), encoding="utf-8")
+    entries = coverage(data["rules"])
+    (args.out / LAYER_FILE).write_text(json.dumps(attack_layer(entries, run), indent=2), encoding="utf-8")
     (args.out / "results.json").write_text(json.dumps(
-        {"run": {"url": run.url, "commit": run.commit, "finished": run.finished}, "summary": summary, **data}, indent=2), encoding="utf-8")
+        {"run": {"url": run.url, "commit": run.commit, "finished": run.finished}, "summary": summary, **data,
+         "coverage": entries}, indent=2), encoding="utf-8")
     print(f"Wrote {args.out / 'index.html'}: {summary}")
     return 0
 

@@ -117,3 +117,26 @@ def test_no_results_publishes_nothing(tmp_path):
     result, out = build(empty, tmp_path)
     assert result.returncode == 2
     assert not out.exists()
+
+
+def test_coverage_counts_only_rules_that_pass_on_real_logs(artifacts, tmp_path):
+    _, out = build(artifacts, tmp_path)
+    coverage = {entry["technique"]: entry for entry in json.loads((out / "results.json").read_text(encoding="utf-8"))["coverage"]}
+    assert coverage["T1554"]["passing"] == 1 and coverage["T1554"]["tactics"] == ["persistence"]
+    assert coverage["T1059.001"]["passing"] == 0  # These rules have no result in this run.
+
+
+def test_attack_layer_marks_untested_techniques(artifacts, tmp_path):
+    _, out = build(artifacts, tmp_path)
+    layer = json.loads((out / "attack-layer.json").read_text(encoding="utf-8"))
+    colors = {item["techniqueID"]: item["color"] for item in layer["techniques"]}
+    assert layer["domain"] == "enterprise-attack" and layer["versions"]["layer"] == "4.5"
+    assert colors["T1554"] == "#0ca30c"
+    assert colors["T1059.001"] == "#fab219"
+
+
+def test_page_links_the_layer_to_attack_navigator(artifacts, tmp_path):
+    _, out = build(artifacts, tmp_path)
+    page = (out / "index.html").read_text(encoding="utf-8")
+    assert "attack-navigator/#layerURL=https%3A%2F%2Fpranavvelu.github.io%2Fdetection-validation-pipeline%2Fattack-layer.json" in page
+    assert 'href="https://attack.mitre.org/techniques/T1574/001/"' in page
