@@ -201,3 +201,24 @@ def test_rule_ignores_events_from_other_categories():
     rule = load_rule(GAME_RULES / "image_load_win_game_system_dll_outside_system_folder.yml")
     event = {"Image": "C:\\g\\FakeQuest.exe", "ImageLoaded": "C:\\g\\version.dll"}
     assert not rule.matches({**event, "_meta": {"category": "process_creation"}})
+
+
+def test_file_monitoring_reports_each_added_line_once(tmp_path):
+    from collect_real_telemetry import file_change_events
+    before = {"hosts": ["127.0.0.1 localhost", "# note"]}
+    after = {"hosts": ["127.0.0.1 localhost", "# note", "127.0.0.1 license.fakequest.invalid", "# note"]}
+    events = file_change_events(before, after)
+    assert [event["AddedLine"] for event in events] == ["127.0.0.1 license.fakequest.invalid", "# note"]
+    assert file_change_events(after, after) == []
+
+
+def test_file_monitoring_reads_the_real_files_it_watches(tmp_path, monkeypatch):
+    import collect_real_telemetry as collector
+    watched = tmp_path / "hosts"
+    watched.write_text("127.0.0.1 localhost\n", encoding="utf-8")
+    monkeypatch.setattr(collector, "WATCHED_FILES", [watched])
+    before = collector.snapshot_files()
+    with watched.open("a", encoding="utf-8") as handle:
+        handle.write("127.0.0.1 license.fakequest.invalid\n")
+    events = collector.file_change_events(before, collector.snapshot_files())
+    assert [(event["TargetFilename"], event["AddedLine"]) for event in events] == [(str(watched), "127.0.0.1 license.fakequest.invalid")]

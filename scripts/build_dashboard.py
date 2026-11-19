@@ -100,14 +100,15 @@ def collect(artifacts: Path) -> Dict[str, Any]:
     rules = []
     for rule in rule_catalog():
         report = reports.get(rule["id"])
-        variations = [item for item in (evasion or {}).get("results", []) if item["rule_file"] == rule["file"]]
+        variations = [item for item in (evasion or {}).get("results", [])
+                      if rule["file"] in item.get("rule_files", [item["rule_file"]])]
         noise_score = next((item for item in (noise or {}).get("rules", []) if item["rule_file"] == rule["file"]), None)
         compared = [item for item in (elastic or {}).get("results", []) if item["rule_file"] == rule["file"]]
         rules.append({
             **rule,
             "verdict": report["verdict"] if report else None,
             "checks": [{"name": check["name"], "passed": check["passed"]} for check in report["checks"]] if report else [],
-            "evasion_caught": sum(item["actual"] == "caught" for item in variations),
+            "evasion_caught": sum(item.get("alerts_by_rule", {}).get(rule["file"], item["alerts"]) > 0 for item in variations),
             "evasion_total": len(variations),
             "noisy_scenarios": noise_score["noisy_scenarios"] if noise_score else None,
             "scenarios": noise_score["scenarios"] if noise_score else None,

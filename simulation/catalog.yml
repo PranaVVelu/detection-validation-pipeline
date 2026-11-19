@@ -120,6 +120,23 @@ tests:
         TargetImage: C:\Games\FakeQuest\FakeQuest.exe
         GrantedAccess: "0x1000"
 
+  # The same hosts edits, seen by comparing the file instead of watching commands.
+  game-hosts-file-change:
+    kind: game
+    script: game-hosts-license-block
+    technique: T1565.001
+    name: Block the game's license server in the hosts file (file monitoring)
+    category: file_change
+    attack_events:
+      - EventType: FileChange
+        TargetFilename: C:\Windows\System32\drivers\etc\hosts
+        AddedLine: 127.0.0.1 license.fakequest.invalid
+    benign_events:
+      # A developer adding their own entry. Reading or searching the file changes nothing.
+      - EventType: FileChange
+        TargetFilename: C:\Windows\System32\drivers\etc\hosts
+        AddedLine: 127.0.0.1 dev.local
+
   game-bootleg-build:
     kind: game
     technique: T1554

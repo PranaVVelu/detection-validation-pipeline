@@ -37,10 +37,12 @@ from collect_real_telemetry import (  # noqa: E402
     SYSMON_WAIT_SECONDS,
     describe_processes,
     export_sysmon,
+    label_file_events,
     label_game_events,
     label_license_events,
     run_license_script,
 )
+from collect_real_telemetry import run_game_script as run_game_command  # noqa: E402
 from dvp.catalog import DEFAULT_CATALOG, ValidationTest, expand_events, load_test  # noqa: E402
 from dvp.errors import PipelineError  # noqa: E402
 from dvp.rules import Rule, load_rule  # noqa: E402
@@ -50,7 +52,7 @@ from dvp.sysmon import select_scenario_events  # noqa: E402
 DEFAULT_VARIANTS = ROOT / "simulation" / "variants.yml"
 VARIANTS_DIR = GAME_DIR / "variants"
 OUTCOMES = {"caught", "missed"}
-EVIDENCE_FIELDS = ("Image", "CommandLine", "OriginalFileName", "SourceImage", "GrantedAccess")
+EVIDENCE_FIELDS = ("Image", "CommandLine", "OriginalFileName", "SourceImage", "GrantedAccess", "TargetFilename", "AddedLine")
 NO_PROCESS = -1  # A variation only has an attack side.
 
 
@@ -65,30 +67,33 @@ def load_variants(path: Path) -> List[Dict[str, Any]]:
     return variants
 
 
+def rule_files(variant: Dict[str, Any]) -> List[str]:
+    """A variation names one rule, or a list when several rules defend against it."""
+    return variant["rule"] if isinstance(variant["rule"], list) else [variant["rule"]]
+
+
 def modeled_events(variant: Dict[str, Any], rule: Rule, test: ValidationTest, run_id: str) -> List[Dict[str, Any]]:
     """Give each modeled event the envelope that a logged event would have."""
     now = datetime.now(timezone.utc).isoformat()
-    meta = {"run_id": run_id, "scenario": "attack", "category": rule.category,
-            "test_id": test.guid, "technique": test.technique}
-    return [{"timestamp": now, **event, "_meta": {**meta, "event_id": str(uuid.uuid4())}}
+    meta = {"run_id": run_id, "scenario": "attack", "test_id": test.guid, "technique": test.technique}
+    return [{"timestamp": now, **{key: value for key, value in event.items() if key != "category"},
+             "_meta": {**meta, "category": event.get("category", rule.category), "event_id": str(uuid.uuid4())}}
             for event in expand_events(variant["events"])]
 
 
-def run_game_script(script: Path, raw_path: Path, workdir: Path) -> Tuple[List[Dict[str, Any]], int]:
-    """Run a script against the fake game, returning the raw events and the script's process ID."""
+def run_game_script(script: Path, raw_path: Path, workdir: Path) -> Tuple[List[Dict[str, Any]], int, List[Dict[str, Any]]]:
+    """Run a script against the fake game, returning the raw events, its process ID, and its file changes."""
     since = datetime.now(timezone.utc) - timedelta(seconds=2)
     command = [*POWERSHELL, str(script), "-GameDir", str(GAME_DIR / "bin")]
-    process = subprocess.Popen(command, cwd=workdir, stdin=subprocess.DEVNULL)
-    if process.wait(timeout=180) != 0:
-        raise PipelineError(f"{script.name} failed with exit code {process.returncode}")
+    pid, file_changes = run_game_command(command, script.name, workdir)
 
     # A script that logged nothing proves nothing, so it mustn't read as "missed" or "quiet".
     deadline = time.monotonic() + SYSMON_WAIT_SECONDS
     while True:
         raw_events = export_sysmon(since, raw_path)
-        if select_scenario_events(raw_events, process.pid):
+        if select_scenario_events(raw_events, pid):
             time.sleep(SYSMON_SETTLE_SECONDS)
-            return export_sysmon(since, raw_path), process.pid
+            return export_sysmon(since, raw_path), pid, file_changes
         if time.monotonic() >= deadline:
             print(describe_processes(raw_events), file=sys.stderr)
             raise PipelineError(f"Sysmon logged nothing for {script.name}")
@@ -97,8 +102,8 @@ def run_game_script(script: Path, raw_path: Path, workdir: Path) -> Tuple[List[D
 
 def run_game_variant(variant: Dict[str, Any], test: ValidationTest, run_id: str,
                      raw_path: Path, workdir: Path) -> List[Dict[str, Any]]:
-    raw_events, pid = run_game_script(VARIANTS_DIR / f"{variant['id']}.ps1", raw_path, workdir)
-    return label_game_events(raw_events, test, run_id, pid, NO_PROCESS)
+    raw_events, pid, file_changes = run_game_script(VARIANTS_DIR / f"{variant['id']}.ps1", raw_path, workdir)
+    return label_game_events(raw_events, test, run_id, pid, NO_PROCESS) + label_file_events(file_changes, test, run_id, "attack")
 
 
 def run_license_variant(variant: Dict[str, Any], test: ValidationTest, run_id: str, workdir: Path) -> List[Dict[str, Any]]:
@@ -107,12 +112,13 @@ def run_license_variant(variant: Dict[str, Any], test: ValidationTest, run_id: s
     return label_license_events(log_path.read_text(encoding="utf-8").splitlines(), test, run_id, "attack")
 
 
-def score(rule: Rule, run_id: str, events: List[Dict[str, Any]]) -> int:
-    """Each variant gets a fresh SIEM, so one variation can't complete another's count."""
+def score(rules: Dict[str, Rule], run_id: str, events: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Count alerts for each rule. Each variant gets a fresh SIEM, so one variation can't complete another's count."""
     store = SiemStore()
-    store.load_rule(run_id, rule)
+    for rule in rules.values():
+        store.load_rule(run_id, rule)
     store.ingest(run_id, events)
-    return len(store.alerts(run_id, rule.id))
+    return {path: len(store.alerts(run_id, rule.id)) for path, rule in rules.items()}
 
 
 def print_evidence(variant_id: str, events: List[Dict[str, Any]]) -> None:
@@ -125,7 +131,8 @@ def print_evidence(variant_id: str, events: List[Dict[str, Any]]) -> None:
 
 def score_variant(variant: Dict[str, Any], mode: str, run_id: str, catalog: Path,
                   raw_out: Optional[Path], workdir: Path) -> Dict[str, Any]:
-    rule = load_rule(ROOT / variant["rule"])
+    rules = {path: load_rule(ROOT / path) for path in rule_files(variant)}
+    rule = next(iter(rules.values()))
     test = load_test(rule.test_id, catalog)
     if mode == "simulated":
         events = modeled_events(variant, rule, test, run_id)
@@ -139,20 +146,23 @@ def score_variant(variant: Dict[str, Any], mode: str, run_id: str, catalog: Path
         with raw_out.open("a", encoding="utf-8") as handle:
             handle.writelines(json.dumps({"variant": variant["id"], **event}) + "\n" for event in events)
 
-    alerts = score(rule, run_id, events)
+    alerts_by_rule = score(rules, run_id, events)
+    alerts = sum(alerts_by_rule.values())
     actual = "caught" if alerts else "missed"
     print_evidence(variant["id"], events)
     return {
         "id": variant["id"],
         "name": variant["name"],
-        "rule": rule.title,
-        "rule_file": variant["rule"],
+        "rule": " / ".join(item.title for item in rules.values()),
+        "rule_file": rule_files(variant)[0],
+        "rule_files": rule_files(variant),
+        "alerts_by_rule": alerts_by_rule,
         "expected": variant["expected"],
         "actual": actual,
         "as_recorded": actual == variant["expected"],
         "why": variant.get("why", ""),
         "events": len(events),
-        "events_rule_reads": sum(event["_meta"]["category"] == rule.category for event in events),
+        "events_rule_reads": sum(event["_meta"]["category"] in {item.category for item in rules.values()} for event in events),
         "alerts": alerts,
     }
 

@@ -122,9 +122,9 @@ def scorecard_datasets(artifacts: Path, variants_path: Path) -> List[Dataset]:
     """The evasion variations against their own rule, and normal activity against every rule."""
     folder = artifacts / "evasion-scorecard"
     placeholders = folder / "placeholders.yml"
-    rules = {variant["id"]: variant["rule"]
+    rules = {variant["id"]: variant["rule"] if isinstance(variant["rule"], list) else [variant["rule"]]
              for variant in yaml.safe_load(variants_path.read_text(encoding="utf-8"))["variants"]}
-    datasets = [Dataset(f"evasion/{variant}", events, [rules[variant]], placeholders)
+    datasets = [Dataset(f"evasion/{variant}", events, rules[variant], placeholders)
                 for variant, events in group_by(read_jsonl(folder / "raw-logs.txt"), "variant").items()]
     datasets += [Dataset(f"noise/{scenario}", events, sigma_rule_files(), placeholders)
                  for scenario, events in group_by(read_jsonl(folder / "noise-raw-logs.txt"), "scenario").items()]

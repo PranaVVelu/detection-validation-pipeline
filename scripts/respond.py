@@ -52,7 +52,8 @@ def load_yaml(path: Path) -> Dict[str, Any]:
 def known_limits(rule_file: str) -> Dict[str, List[str]]:
     """What the scorecards record about this rule, so a responder knows where it's weak."""
     misses = [f"{item['name']}: {item['why']}" for item in load_yaml(VARIANTS).get("variants", [])
-              if item["rule"] == rule_file and item["expected"] == "missed"]
+              if rule_file in (item["rule"] if isinstance(item["rule"], list) else [item["rule"]])
+              and item["expected"] == "missed"]
     noise = [f"{item['name']}: {item['why']}" for item in load_yaml(NOISE).get("scenarios", [])
              if rule_file in item["fires"]]
     return {"known_misses": misses, "known_noise": noise}

@@ -123,6 +123,10 @@ The `Compare with Elasticsearch` job runs after the real Windows jobs and reads 
 
 To add normal activity, add a script to `game/noise/` named after its ID, then add an entry to `simulation/noise.yml` with the rules it sets off, the reason, and modeled events. Run `make noise` to check the modeled events, then push to a `telemetry/**` branch to run it for real. Check the evasion scorecard when you tune a rule, because tuning away noise can open a blind spot.
 
+### File monitoring
+
+Game scripts run between two snapshots of the files in `WATCHED_FILES` (the `hosts` file by default), and each line a script adds becomes a `file_change` event, as a file integrity monitor would report it. A rule for these events uses `logsource: {category: file_change}`, and a catalog test can reuse another test's scenario with `script:`. A variation can list several rules, and it counts as caught if any of them fires.
+
 ### Evasion variations
 
 To add a variation, add a script to `game/variants/` named after its ID, then add an entry to `simulation/variants.yml` with its expected result, the reason, and modeled events. Run `make evasion` to check the modeled events, then push to a `telemetry/**` branch to run it for real. Keep variations harmless and aimed at the fake game. When you widen a rule to catch one, add a normal action that the wider rule could wrongly match to its benign side.

@@ -29,7 +29,7 @@ SCRIPTS = Path(__file__).resolve().parent
 ROOT = SCRIPTS.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from collect_real_telemetry import GAME_DIR, label_game_events, label_license_events, run_license_script  # noqa: E402
+from collect_real_telemetry import GAME_DIR, label_file_events, label_game_events, label_license_events, run_license_script  # noqa: E402
 from dvp.catalog import ValidationTest, expand_events  # noqa: E402
 from dvp.errors import PipelineError  # noqa: E402
 from dvp.rules import RULE_SUFFIXES, Rule, load_rule  # noqa: E402
@@ -84,8 +84,8 @@ def real_events(scenario: Dict[str, Any], run_id: str, workdir: Path) -> List[Di
         log_path = workdir / f"{scenario['id']}.jsonl"
         run_license_script(NOISE_DIR / f"{scenario['id']}.py", "benign", log_path)
         return label_license_events(log_path.read_text(encoding="utf-8").splitlines(), test, run_id, SCENARIO_LABEL)
-    raw_events, pid = run_game_script(NOISE_DIR / f"{scenario['id']}.ps1", workdir / "raw.xml", workdir)
-    return label_game_events(raw_events, test, run_id, NO_PROCESS, pid)
+    raw_events, pid, file_changes = run_game_script(NOISE_DIR / f"{scenario['id']}.ps1", workdir / "raw.xml", workdir)
+    return label_game_events(raw_events, test, run_id, NO_PROCESS, pid) + label_file_events(file_changes, test, run_id, SCENARIO_LABEL)
 
 
 def alerts_by_rule(rules: Dict[str, Rule], run_id: str, events: List[Dict[str, Any]]) -> Dict[str, int]:

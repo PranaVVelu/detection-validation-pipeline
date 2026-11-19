@@ -24,6 +24,7 @@ class ValidationTest:
     attack_events: List[Dict[str, Any]]
     benign_events: List[Dict[str, Any]]
     upstream_commit: str
+    script: str = ""
 
     @property
     def command_marker(self) -> str:
@@ -62,4 +63,5 @@ def load_test(guid: str, catalog_path: Path = DEFAULT_CATALOG) -> ValidationTest
         attack_events=expand_events(entry["attack_events"]),
         benign_events=expand_events(entry.get("benign_events") or catalog["benign_baseline"][entry["category"]]),
         upstream_commit=catalog["upstream"]["commit"],
+        script=entry.get("script", guid),
     )

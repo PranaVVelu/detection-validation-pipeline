@@ -32,6 +32,14 @@ playbooks:
     action:
       type: manual
       summary: Remove the hosts entry and flag the account for a license check.
+  detections/sigma/game/file_change_win_game_license_server_hosts_entry.yml:
+    severity: medium
+    checklist:
+      - Read the new hosts entry and check whether it points the license server elsewhere.
+      - Find which process or script changed the file, since the command line may not show it.
+    action:
+      type: manual
+      summary: Remove the hosts entry and flag the account for a license check.
   detections/sigma/game/image_load_win_game_system_dll_outside_system_folder.yml:
     severity: high
     checklist:

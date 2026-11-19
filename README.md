@@ -159,6 +159,7 @@ Real game tampering is the project's niche. These rules protect [FakeQuest](game
 | **Mod or crack injection** | The game loading a system-named DLL from outside the Windows folder | DLL load | T1574.001 |
 | **Memory tampering** | A process requesting write access to the game's memory | Process access | T1055 |
 | **Bootleg copy** | FakeQuest running with a hash that isn't on the official list | Process creation | T1554 |
+| **License bypass, by file** | A new hosts line that mentions a license server, found by comparing the file before and after | File change | T1565.001 |
 
 The tests are harmless on purpose. The license domain uses the reserved `.invalid` name, the planted DLL is an unmodified signed Windows file, the memory tool closes its handle without reading or writing anything, and the bootleg copy only has one word changed in its startup message. **This project detects tampering, so it doesn't include cracks, cheats, or bypass techniques.**
 
@@ -179,12 +180,12 @@ Both rules count different values, not attempts. Two negative controls show why:
 
 Passing against one version of an attack doesn't say much about the next version, so [`simulation/variants.yml`](simulation/variants.yml) records ten harmless variations and what each rule does with them. Real runs execute them on a disposable Windows VM. A result that differs from the record fails the run in either direction, and a variation that logged nothing is an error rather than a miss.
 
-Before any fixes, the rules caught **2 of 10** on real logs. They now catch **5 of 10**:
+Before any fixes, the rules caught **2 of 10** on real logs. Three rule fixes raised that to 5 of 10, and file monitoring raised it to **6 of 10**:
 
 | Attack | Variation | Before | Now | Why |
 | --- | --- | --- | --- | --- |
 | `hosts` edit | PowerShell's `Add-Content` | Missed | **Caught** | The rule now knows PowerShell's file-writing commands |
-| `hosts` edit | From a script file | Missed | Missed | The command line only shows the script's name, so this needs file monitoring |
+| `hosts` edit | From a script file | Missed | **Caught** | The command line only shows the script's name, so a file-monitoring rule now compares the file itself |
 | DLL planting | Uppercase `WINMM.DLL` | Caught | Caught | Matching ignores case |
 | DLL planting | Next to a renamed game | Missed | Missed | The rule and the Sysmon config go by the game's name, because logging every DLL load is too noisy |
 | Memory tampering | Full access | Missed | Missed | Launchers also request full access, so this is left out to avoid false alerts |
@@ -222,7 +223,7 @@ The tuning has a cost: a guesser now gets 19 tries instead of 9 before an alert.
 
 Rules pass or fail on engines this project wrote, so a pass could mean the engine and the rule share a misunderstanding. Each real run therefore loads its saved logs into a real Elasticsearch, converts the nine Sigma rules with the standard pySigma tools, and compares whether each rule fires on each set of logs. A difference that isn't [on record](simulation/siem-differences.yml) fails the run.
 
-**All 127 results agree** once the script corrects three problems with the converted queries. Testing against this project's engine could never have found them:
+**All results agree** once the script corrects three problems with the converted queries. Testing against this project's engine could never have found them:
 
 - **Case sensitivity:** the converted queries are case-sensitive, but Sigma rules are meant to ignore case. Before the fix, the rules missed an uppercase `WINMM.DLL` and PowerShell's `-EncodedCommand` in Elasticsearch, and agreement was 125 of 127. The script now compares lowercase values, except in regexes, which Sigma treats as case-sensitive.
 - **Backslashes:** the converter's `like` patterns are rejected outright when a rule contains a Windows path. [`compare_elastic.py`](scripts/compare_elastic.py) corrects them.
@@ -253,7 +254,7 @@ python3 scripts/respond.py approve --incidents reports/incidents.json --id <inci
 7. ~~Run the rules in a real SIEM as well as the mock~~
 8. ~~Publish coverage, the latest results, and known gaps on a [public dashboard](https://pranavvelu.github.io/detection-validation-pipeline/)~~
 
-Since then, the dashboard has gained an ATT&CK coverage map and a score history, the Elasticsearch comparison ignores case as Sigma does, and every alert becomes a [draft response](#automated-response).
+Since then, the dashboard has gained an ATT&CK coverage map and a score history, file monitoring catches `hosts` edits made from a script file, the Elasticsearch comparison ignores case as Sigma does, and every alert becomes a [draft response](#automated-response).
 
 ## Scope and limitations
 
@@ -261,7 +262,7 @@ Since then, the dashboard has gained an ATT&CK coverage map and a score history,
 - **Known noise remains.** The [noise score](#noise-score) lists the normal activity that still sets off rules.
 - **Known blind spots remain.** The [evasion scorecard](#evasion-scorecard) lists what the rules still miss.
 - **License traffic is scripted.** The server and its logs are real, but the requests come from test scripts on one machine, so every request has the same address. Real thresholds need tuning against real player traffic, and the scorecard records that spreading guesses across addresses gets past the guessing rule.
-- **Coverage is small.** The catalog has two Atomic tests, four game tests, and two license tests, and KQL rules can only use `DeviceProcessEvents`.
+- **Coverage is small.** The catalog has two Atomic tests, five game tests, and two license tests, and KQL rules can only use `DeviceProcessEvents`.
 - **The bootleg rule depends on its list.** An official patch that isn't on the list yet would look like a bootleg. A copy that also changes the name stored inside the file would get past it.
 - **Game rules are tied to FakeQuest.** Protecting a real game means changing the game name in each rule, and the access values and DLL names need tuning for that game.
 - **A real pass applies to one environment.** It covers a clean Windows Server VM with a minimal Sysmon configuration, not every Windows setup, and it doesn't measure false positives on real user activity.
