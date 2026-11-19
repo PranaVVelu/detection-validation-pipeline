@@ -87,6 +87,10 @@ def collect(artifacts: Path) -> Dict[str, Any]:
         report = read_json(path)
         if report:
             reports[report["rule_id"]] = report
+    incidents = []
+    for path in sorted(artifacts.glob("real-telemetry-*/incidents.json")):
+        drafted = (read_json(path) or {}).get("incidents") or []
+        incidents += drafted[:1]  # One example per rule is enough to show the response.
     evasion = read_json(artifacts / "evasion-scorecard" / "scorecard.json")
     noise = read_json(artifacts / "evasion-scorecard" / "noise.json")
     elastic = read_json(artifacts / "elastic-comparison" / "elastic.json")
@@ -116,6 +120,7 @@ def collect(artifacts: Path) -> Dict[str, Any]:
         "evasion": (evasion or {}).get("results"),
         "noise": (noise or {}).get("results"),
         "elastic": (elastic or {}).get("results"),
+        "incidents": incidents,
     }
 
 
@@ -165,6 +170,17 @@ def attack_layer(entries: List[Dict[str, Any]], run: "RunInfo") -> Dict[str, Any
         ],
         "hideDisabled": False,
     }
+
+
+def incident_rows(incidents: List[Dict[str, Any]]) -> str:
+    rows = []
+    for incident in incidents:
+        action = incident["action"]
+        state = status("warn", "Waiting for approval") if action["status"] == "awaiting approval" else status("", "Step for a person")
+        rows.append(f'<li><div><strong>{escape(incident["rule"])}</strong>'
+                    f'<span class="sub">{escape(incident["severity"].capitalize())} · {len(incident["checklist"])} checklist steps</span></div>'
+                    f'<div>{state}</div><div class="why">{escape(incident["summary"])}. Suggested: {escape(action["summary"])}</div></li>')
+    return f'<ul class="rows">{"".join(rows)}</ul>'
 
 
 def coverage_rows(entries: List[Dict[str, Any]]) -> str:
@@ -374,34 +390,39 @@ def render(data: Dict[str, Any], summary: Dict[str, Any], content: Dict[str, Any
     entries = coverage(data["rules"])
     navigator = f"{NAVIGATOR_URL}#layerURL={quote(PAGES_URL + LAYER_FILE, safe='')}"
     sections = [
-        section(1, 8, "rules", "The rules",
+        section(1, 9, "rules", "The rules",
                 "Each rule runs on its own disposable Windows machine against a real test. To pass, it has to alert on the attack and stay quiet on normal activity.",
                 f'<div class="cards">{"".join(rule_card(rule) for rule in data["rules"])}</div>'),
-        section(2, 8, "coverage", "Coverage map",
+        section(2, 9, "coverage", "Coverage map",
                 f"The {len(entries)} ATT&amp;CK techniques with a rule tested on real logs. A tested rule isn't full coverage of a technique: "
-                f"the next section shows variations that still get past them. "
+                f"the evasion section below shows variations that still get past them. "
                 f'<a href="{escape(navigator, quote=True)}">Open in ATT&amp;CK Navigator ↗</a> or download the <a href="{LAYER_FILE}">layer file</a>.',
                 coverage_rows(entries)),
-        section(3, 8, "evasion", "What gets past them",
+        section(3, 9, "response", "When a rule fires",
+                "Each alert becomes a draft incident with context, a checklist, what the rule is known to miss, and a suggested action. "
+                "Nothing runs until a person approves it, and only disabling a shared license key can run automatically. "
+                "These examples come from this run's attacks.",
+                incident_rows(data["incidents"]) if data["incidents"] else '<p class="intro">This run drafted no incidents.</p>'),
+        section(4, 9, "evasion", "What gets past them",
                 "Harmless variations of each game and license attack. Misses are recorded rather than hidden, and any change from the record fails the run.",
                 evasion_rows(data["evasion"]) if data["evasion"] is not None else missing),
-        section(4, 8, "noise", "What sets them off by mistake",
+        section(5, 9, "noise", "What sets them off by mistake",
                 "Normal activity, scored against every rule. A rule that fires on normal behavior buries analysts in bad alerts.",
                 noise_rows(data["noise"], titles) if data["noise"] is not None else missing),
-        section(5, 8, "elastic", "A second opinion",
+        section(6, 9, "elastic", "A second opinion",
                 f"Rules pass or fail on engines this project wrote, so the real logs also go into a real Elasticsearch, which runs the {sigma_count} Sigma rules after standard conversion. These are the results where the two disagree.",
                 elastic_rows(data["elastic"], recorded) if data["elastic"] is not None else missing),
-        section(6, 8, "history", "Score history",
+        section(7, 9, "history", "Score history",
                 "Each real run on main adds its scores here, so the improvements and any slips stay visible. "
                 "Hover over a point to see its run. The earliest runs come from before the page kept its own history.",
                 history_section(history)),
-        section(7, 8, "findings", "What real logs changed",
+        section(8, 9, "findings", "What real logs changed",
                 "Mistakes and surprises that only showed up on real logs and real tools. Each one links to its run.",
                 f'<ol class="timeline">{findings}</ol>'),
-        section(8, 8, "limits", "What this doesn't prove", escape(content["ground_rules"]), f'<div class="split">{limits}</div>'),
+        section(9, 9, "limits", "What this doesn't prove", escape(content["ground_rules"]), f'<div class="split">{limits}</div>'),
     ]
     nav = "".join(f'<a href="#{anchor}">{label}</a>' for anchor, label in (
-        ("rules", "Rules"), ("coverage", "Coverage"), ("evasion", "Evasion"), ("noise", "Noise"), ("elastic", "Elasticsearch"), ("history", "History"), ("findings", "Findings"), ("limits", "Limits")))
+        ("rules", "Rules"), ("coverage", "Coverage"), ("response", "Response"), ("evasion", "Evasion"), ("noise", "Noise"), ("elastic", "Elasticsearch"), ("history", "History"), ("findings", "Findings"), ("limits", "Limits")))
 
     return f"""<!doctype html>
 <html lang="en">

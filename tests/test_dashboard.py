@@ -179,3 +179,13 @@ def test_history_chart_names_each_point_and_skips_unmeasured_runs(artifacts, tmp
     page = (out / "index.html").read_text(encoding="utf-8")
     assert "<title>Evasion scorecard added, 5 Nov 2026: 2 of 10</title>" in page
     assert page.count('class="spark"') == 4
+
+
+def test_response_section_shows_one_draft_per_rule_waiting_for_approval(artifacts, tmp_path):
+    incident = {"rule": "A rule", "severity": "high", "checklist": ["a", "b"], "summary": "A rule fired",
+                "action": {"summary": "Disable the shared license key.", "status": "awaiting approval"}}
+    write(artifacts / "real-telemetry-bootleg/incidents.json", {"incidents": [incident, incident]})
+    _, out = build(artifacts, tmp_path)
+    page = (out / "index.html").read_text(encoding="utf-8")
+    assert page.count("Waiting for approval") == 1
+    assert "High · 2 checklist steps" in page

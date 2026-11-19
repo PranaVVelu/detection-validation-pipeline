@@ -92,6 +92,10 @@ jobs:
       - name: Validate the alert
         run: python scripts/validate_alert.py --rule "$env:RULE" --run-id "$env:RUN_ID" --alerts-file reports/alerts.json --telemetry "Real" --report reports/report.json --summary reports/summary.md
 
+      - name: Draft the response
+        # Drafts only: every suggested action waits for a person to approve it.
+        run: python scripts/respond.py draft --rule "$env:RULE" --alerts-file reports/alerts.json --run-id "$env:RUN_ID" --out reports/incidents.json
+
       - name: Keep the official hash list with the logs
         if: always()
         run: if (Test-Path game/bin/placeholders.yml) { Copy-Item game/bin/placeholders.yml reports/ }

@@ -232,6 +232,16 @@ These apply to `pySigma-backend-elasticsearch` 1.1.6, the newest version that wa
 
 The KQL rule isn't compared, because Elasticsearch can't run KQL as written here. Elasticsearch also counts in fixed time windows rather than sliding ones, so a burst of activity that crosses a window boundary could give a different count.
 
+## Automated response
+
+Detection is only half the job, so each real run turns its alerts into draft incidents with [`respond.py`](scripts/respond.py). A draft holds the alert's context, a checklist from [`response/playbooks.yml`](response/playbooks.yml), what the scorecards say the rule misses or fires on by mistake, and a suggested action.
+
+Nothing runs until a person approves it. Only one action can run automatically: disabling a shared license key on the fake license server, which needs an admin token. The other actions, such as isolating a machine, are steps for a person, because automating them safely would need systems this project doesn't have.
+
+```bash
+python3 scripts/respond.py approve --incidents reports/incidents.json --id <incident> --approver <your name> --license-url http://127.0.0.1:<port>
+```
+
 ## Roadmap
 
 1. ~~Validate rules against simulated attacks in CI~~
@@ -243,7 +253,7 @@ The KQL rule isn't compared, because Elasticsearch can't run KQL as written here
 7. ~~Run the rules in a real SIEM as well as the mock~~
 8. ~~Publish coverage, the latest results, and known gaps on a [public dashboard](https://pranavvelu.github.io/detection-validation-pipeline/)~~
 
-Since then, the dashboard has gained an ATT&CK coverage map and a score history, and the Elasticsearch comparison now ignores case as Sigma does.
+Since then, the dashboard has gained an ATT&CK coverage map and a score history, the Elasticsearch comparison ignores case as Sigma does, and every alert becomes a [draft response](#automated-response).
 
 ## Scope and limitations
 
