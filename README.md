@@ -222,9 +222,9 @@ The tuning has a cost: a guesser now gets 19 tries instead of 9 before an alert.
 
 Rules pass or fail on engines this project wrote, so a pass could mean the engine and the rule share a misunderstanding. Each real run therefore loads its saved logs into a real Elasticsearch, converts the nine Sigma rules with the standard pySigma tools, and compares whether each rule fires on each set of logs. A difference that isn't [on record](simulation/siem-differences.yml) fails the run.
 
-**125 of 127 results agree.** The comparison also found problems that testing against this project's engine never could:
+**All 127 results agree** once the script corrects three problems with the converted queries. Testing against this project's engine could never have found them:
 
-- **Case sensitivity:** the converted queries are case-sensitive, but Sigma rules are meant to ignore case. In Elasticsearch, the rules miss an uppercase `WINMM.DLL` and PowerShell's `-EncodedCommand`. These are the two recorded differences.
+- **Case sensitivity:** the converted queries are case-sensitive, but Sigma rules are meant to ignore case. Before the fix, the rules missed an uppercase `WINMM.DLL` and PowerShell's `-EncodedCommand` in Elasticsearch, and agreement was 125 of 127. The script now compares lowercase values, except in regexes, which Sigma treats as case-sensitive.
 - **Backslashes:** the converter's `like` patterns are rejected outright when a rule contains a Windows path. [`compare_elastic.py`](scripts/compare_elastic.py) corrects them.
 - **Regexes:** the converter's `rlike` patterns have to match the whole value and turn `\d` into a literal, so the obfuscation rule never fired. The script corrects those too.
 

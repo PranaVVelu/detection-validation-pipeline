@@ -11,6 +11,7 @@ from compare_elastic import (
     compare_dataset,
     fix_like_backslashes,
     fix_rlike_patterns,
+    ignore_case,
     index_mappings,
     result_key,
     sigma_rule_files,
@@ -102,3 +103,23 @@ def test_a_dataset_with_no_logs_is_an_error():
     from dvp.errors import PipelineError
     with pytest.raises(PipelineError):
         compare_dataset(Dataset("test/x", [], sigma_rule_files(), None), FakeElastic(False), lambda r, p: "q")
+
+
+
+def test_values_are_compared_without_regard_to_case():
+    query = (r'from * metadata _id | where ends_with(ImageLoaded, "\\WINMM.dll") and not starts_with(Image, "C:\\Windows\\") '
+             r'and CommandLine like "* -EncodedCommand *" and not Hashes=="SHA256=ABC" and (GrantedAccess in ("0x1FFFFF", "0x38"))')
+    assert ignore_case(query) == (
+        r'from * metadata _id | where ends_with(TO_LOWER(ImageLoaded), "\\winmm.dll") and not starts_with(TO_LOWER(Image), "c:\\windows\\") '
+        r'and TO_LOWER(CommandLine) like "* -encodedcommand *" and not TO_LOWER(Hashes)=="sha256=abc" '
+        r'and (TO_LOWER(GrantedAccess) in ("0x1fffff", "0x38"))')
+
+
+def test_regexes_and_counting_are_left_alone():
+    query = ('from * | where CommandLine rlike ".*%[A-Z]+%.*" and reason=="Unknown_Key"\n'
+             '| eval timebucket=date_trunc(5minutes, @timestamp) | stats value_count=count_distinct(license_key_hash) by timebucket, client_ip\n'
+             '| where value_count >= 20')
+    converted = ignore_case(query)
+    assert 'CommandLine rlike ".*%[A-Z]+%.*"' in converted
+    assert 'TO_LOWER(reason)=="unknown_key"' in converted
+    assert converted.endswith(query[query.index("\n| eval"):])

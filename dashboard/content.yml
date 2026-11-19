@@ -27,7 +27,7 @@ findings:
     link: https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41991611893
   - when: Phase 7
     title: Converted rules don't always behave the same
-    detail: Elasticsearch rejected some converted queries outright, and its case-sensitive matching misses -EncodedCommand.
+    detail: Elasticsearch rejected some converted queries outright, and case-sensitive matching missed -EncodedCommand until the comparison corrected it.
     link: https://github.com/PranaVVelu/detection-validation-pipeline/actions/runs/41994503119
 
 limits:
