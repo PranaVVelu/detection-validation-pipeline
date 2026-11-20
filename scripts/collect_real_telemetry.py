@@ -13,21 +13,27 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.request
 import uuid
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import yaml
 
 SCRIPTS = Path(__file__).resolve().parent
 GAME_DIR = SCRIPTS.parent / "game"
 LICENSE_SERVER = GAME_DIR / "license_server.py"
+FILE_CHANGE = "file_change"
+# Files compared before and after each game script. Tests point this somewhere harmless.
+WATCHED_FILES = [Path(path) for path in os.environ.get(
+    "DVP_WATCHED_FILES", r"C:\Windows\System32\drivers\etc\hosts").split(os.pathsep) if path]
 sys.path.insert(0, str(SCRIPTS.parent / "src"))
 
 from dvp.catalog import DEFAULT_CATALOG, ValidationTest, load_test  # noqa: E402
@@ -123,14 +129,51 @@ def label_events(raw_events: List[Dict[str, Any]], test: ValidationTest, run_id:
     return labeled
 
 
-def run_game_scenario(test: ValidationTest, scenario: str, workdir: Path) -> int:
-    """Run one side of a game test, returning the root process ID."""
-    command = [*POWERSHELL, str(GAME_DIR / "scenarios" / f"{test.guid}.ps1"), "-Scenario", scenario,
-               "-GameDir", str(GAME_DIR / "bin")]
+def snapshot_files() -> Dict[str, List[str]]:
+    snapshot = {}
+    for path in WATCHED_FILES:
+        try:
+            snapshot[str(path)] = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            snapshot[str(path)] = []
+    return snapshot
+
+
+def file_change_events(before: Dict[str, List[str]], after: Dict[str, List[str]]) -> List[Dict[str, Any]]:
+    """One event per line a script added, like a file integrity monitor comparing two scans.
+
+    Comparing the file catches every way of editing it, including from a script file,
+    which a process's command line doesn't show.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    events = []
+    for path, lines in after.items():
+        added = Counter(lines) - Counter(before.get(path, []))
+        new_lines = []
+        # Scan from the end, because edits like these append, so a repeated line's new copy is the later one.
+        for line in reversed(lines):
+            if added[line] > 0:
+                added[line] -= 1
+                new_lines.append(line)
+        events += [{"timestamp": now, "EventType": "FileChange", "TargetFilename": path, "AddedLine": line}
+                   for line in reversed(new_lines)]
+    return events
+
+
+def run_game_script(command: List[str], name: str, workdir: Path) -> Tuple[int, List[Dict[str, Any]]]:
+    """Run a script against the fake game, returning its process ID and the file changes it made."""
+    before = snapshot_files()
     process = subprocess.Popen(command, cwd=workdir, stdin=subprocess.DEVNULL)
     if process.wait(timeout=180) != 0:
-        raise PipelineError(f"Scenario {scenario} of {test.guid} failed with exit code {process.returncode}")
-    return process.pid
+        raise PipelineError(f"{name} failed with exit code {process.returncode}")
+    return process.pid, file_change_events(before, snapshot_files())
+
+
+def run_game_scenario(test: ValidationTest, scenario: str, workdir: Path) -> Tuple[int, List[Dict[str, Any]]]:
+    """Run one side of a game test, returning the root process ID and its file changes."""
+    command = [*POWERSHELL, str(GAME_DIR / "scenarios" / f"{test.script}.ps1"), "-Scenario", scenario,
+               "-GameDir", str(GAME_DIR / "bin")]
+    return run_game_script(command, f"Scenario {scenario} of {test.guid}", workdir)
 
 
 def label_game_events(raw_events: List[Dict[str, Any]], test: ValidationTest, run_id: str,
@@ -159,20 +202,30 @@ def run_license_script(script: Path, scenario: str, log_path: Path) -> None:
         server.wait(timeout=10)
 
 
-def label_license_events(lines: List[str], test: ValidationTest, run_id: str, scenario: str) -> List[Dict[str, Any]]:
-    """Each scenario has its own server and log, so every line in the log belongs to it."""
+def label_records(records: List[Dict[str, Any]], test: ValidationTest, run_id: str, scenario: str,
+                  category: str, source: str) -> List[Dict[str, Any]]:
     return [{
-        **json.loads(line),
+        **record,
         "_meta": {
             "event_id": str(uuid.uuid4()),
             "run_id": run_id,
             "scenario": scenario,
-            "category": test.category,
+            "category": category,
             "test_id": test.guid,
             "technique": test.technique,
-            "source": "license_server",
+            "source": source,
         },
-    } for line in lines if line.strip()]
+    } for record in records]
+
+
+def label_license_events(lines: List[str], test: ValidationTest, run_id: str, scenario: str) -> List[Dict[str, Any]]:
+    """Each scenario has its own server and log, so every line in the log belongs to it."""
+    return label_records([json.loads(line) for line in lines if line.strip()], test, run_id, scenario,
+                         test.category, "license_server")
+
+
+def label_file_events(records: List[Dict[str, Any]], test: ValidationTest, run_id: str, scenario: str) -> List[Dict[str, Any]]:
+    return label_records(records, test, run_id, scenario, FILE_CHANGE, "file_monitor")
 
 
 def collect_license_events(test: ValidationTest, run_id: str, raw_path: Path, workdir: Path) -> List[Dict[str, Any]]:
@@ -245,6 +298,8 @@ def wait_for_events(since: datetime, raw_path: Path, test: ValidationTest, run_i
 
 
 def describe_event(event: Dict[str, Any]) -> str:
+    if event["_meta"].get("source") == "file_monitor":
+        return f"{event.get('TargetFilename')} gained: {event.get('AddedLine')}"
     if event["_meta"].get("source") == "license_server":
         return f"{event.get('result')} {event.get('reason')} key={event.get('license_key_hash')} machine={event.get('machine_id')}"
     if event.get("CommandLine"):
@@ -272,9 +327,17 @@ def main() -> int:
             workdir = Path(temp)
             if test.kind == "license":
                 events = collect_license_events(test, args.run_id, args.raw_out.resolve(), workdir)
+            elif test.kind == "game" and test.category == FILE_CHANGE:
+                _, benign_changes = run_game_scenario(test, "benign", workdir)
+                _, attack_changes = run_game_scenario(test, "attack", workdir)
+                events = (label_file_events(benign_changes, test, args.run_id, "benign")
+                          + label_file_events(attack_changes, test, args.run_id, "attack"))
+                args.raw_out.write_text("\n".join(json.dumps(event) for event in events) + "\n", encoding="utf-8")
+                if not has_both_scenarios(events, FILE_CHANGE):
+                    raise PipelineError(f"No watched file changed in both scenarios of {test.guid}")
             elif test.kind == "game":
-                benign_pid = run_game_scenario(test, "benign", workdir)
-                attack_pid = run_game_scenario(test, "attack", workdir)
+                benign_pid, _ = run_game_scenario(test, "benign", workdir)
+                attack_pid, _ = run_game_scenario(test, "attack", workdir)
                 events = wait_for_game_events(since, args.raw_out.resolve(), test, args.run_id, attack_pid, benign_pid)
             else:
                 fetch_atomic(test, workdir / "atomics")

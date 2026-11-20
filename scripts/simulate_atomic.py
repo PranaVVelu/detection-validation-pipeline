@@ -25,11 +25,13 @@ from dvp.errors import PipelineError  # noqa: E402
 from dvp.rules import load_rule  # noqa: E402
 from dvp.sysmon import EVENT_ID_BY_CATEGORY  # noqa: E402
 
+NON_SYSMON_CATEGORIES = {"license_activation", "file_change"}
+
 
 def _render(template: Dict[str, Any], test: ValidationTest, run_id: str, scenario: str) -> Dict[str, Any]:
     """Combine a catalog event with the envelope fields a real sensor would add."""
     now = datetime.now(timezone.utc).isoformat()
-    envelope: Dict[str, Any] = {"timestamp": now} if test.kind == "license" else {
+    envelope: Dict[str, Any] = {"timestamp": now} if test.category in NON_SYSMON_CATEGORIES else {
         "EventID": EVENT_ID_BY_CATEGORY[test.category],
         "Channel": "Microsoft-Windows-Sysmon/Operational",
         "Computer": "WIN-SIMULATED-01",

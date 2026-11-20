@@ -1,0 +1,27 @@
+title: License Server Entry Added to the Hosts File
+id: 3b8e5d21-6c4f-4a97-b1e0-9d2a7f6c4e58
+status: experimental
+description: >
+  Detects a new line in the Windows hosts file that mentions a license server, found by
+  comparing the file before and after a change. Unlike the command rule, it catches
+  edits made from a script file, where the command line only shows the script's name.
+references:
+  - https://attack.mitre.org/techniques/T1565/001/
+author: PranaVVelu
+date: 2026-11-19
+tags:
+  - attack.impact
+  - attack.t1565.001
+logsource:
+  category: file_change
+  product: windows
+detection:
+  selection:
+    TargetFilename|endswith: '\drivers\etc\hosts'
+    AddedLine|contains: 'license'
+  condition: selection
+falsepositives:
+  - Administrators testing their own license servers
+level: medium
+x_game_threat: license-bypass
+x_game_test: game-hosts-file-change

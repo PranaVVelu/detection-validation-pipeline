@@ -41,6 +41,11 @@ SCENARIOS = ("attack", "benign")
 FROM_CLAUSE = "from * metadata _id, _index, _version"
 _LIKE_PATTERN = re.compile(r'\blike "((?:[^"\\]|\\.)*)"')
 _RLIKE_PATTERN = re.compile(r'\brlike "((?:[^"\\]|\\.)*)"')
+_STRING = r'"(?:[^"\\]|\\.)*"'
+_FIELD = r"[A-Za-z_][\w.]*"
+_FUNCTION_TEST = re.compile(rf"\b(ends_with|starts_with)\(({_FIELD}), ({_STRING})\)")
+_OPERATOR_TEST = re.compile(rf"(?<![\w.])(?<!TO_LOWER\()({_FIELD}) ?(==| like ) ?({_STRING})")
+_LIST_TEST = re.compile(rf"(?<![\w.])(?<!TO_LOWER\()({_FIELD}) in \(((?:{_STRING}(?:, )?)+)\)")
 
 
 @dataclass(frozen=True)
@@ -117,9 +122,9 @@ def scorecard_datasets(artifacts: Path, variants_path: Path) -> List[Dataset]:
     """The evasion variations against their own rule, and normal activity against every rule."""
     folder = artifacts / "evasion-scorecard"
     placeholders = folder / "placeholders.yml"
-    rules = {variant["id"]: variant["rule"]
+    rules = {variant["id"]: variant["rule"] if isinstance(variant["rule"], list) else [variant["rule"]]
              for variant in yaml.safe_load(variants_path.read_text(encoding="utf-8"))["variants"]}
-    datasets = [Dataset(f"evasion/{variant}", events, [rules[variant]], placeholders)
+    datasets = [Dataset(f"evasion/{variant}", events, rules[variant], placeholders)
                 for variant, events in group_by(read_jsonl(folder / "raw-logs.txt"), "variant").items()]
     datasets += [Dataset(f"noise/{scenario}", events, sigma_rule_files(), placeholders)
                  for scenario, events in group_by(read_jsonl(folder / "noise-raw-logs.txt"), "scenario").items()]
@@ -188,7 +193,20 @@ def convert(rule_file: str, placeholders: Optional[Path]) -> str:
     queries = ESQLBackend(processing_pipeline=pipeline).convert(
         SigmaCollection.from_yaml((ROOT / rule_file).read_text(encoding="utf-8")))
     # A correlation rule converts to the one query that counts its base rule's events.
-    return fix_rlike_patterns(fix_like_backslashes(queries[-1]))
+    return ignore_case(fix_rlike_patterns(fix_like_backslashes(queries[-1])))
+
+
+def ignore_case(query: str) -> str:
+    """Match values without regard to case, as Sigma rules do. The 1.1.6 backend's queries are case-sensitive.
+
+    Only the filter before any counting is changed. Regexes are left alone, because a
+    Sigma regex is case-sensitive unless the rule says otherwise.
+    """
+    head, separator, tail = query.partition("\n| eval")
+    head = _FUNCTION_TEST.sub(lambda m: f"{m.group(1)}(TO_LOWER({m.group(2)}), {m.group(3).lower()})", head)
+    head = _OPERATOR_TEST.sub(lambda m: f"TO_LOWER({m.group(1)}){m.group(2) if m.group(2) == ' like ' else '=='}{m.group(3).lower()}", head)
+    head = _LIST_TEST.sub(lambda m: f"TO_LOWER({m.group(1)}) in ({m.group(2).lower()})", head)
+    return head + separator + tail
 
 
 def fix_like_backslashes(query: str) -> str:

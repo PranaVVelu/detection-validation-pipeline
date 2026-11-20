@@ -92,6 +92,10 @@ jobs:
       - name: Validate the alert
         run: python scripts/validate_alert.py --rule "$env:RULE" --run-id "$env:RUN_ID" --alerts-file reports/alerts.json --telemetry "Real" --report reports/report.json --summary reports/summary.md
 
+      - name: Draft the response
+        # Drafts only: every suggested action waits for a person to approve it.
+        run: python scripts/respond.py draft --rule "$env:RULE" --alerts-file reports/alerts.json --run-id "$env:RUN_ID" --out reports/incidents.json
+
       - name: Keep the official hash list with the logs
         if: always()
         run: if (Test-Path game/bin/placeholders.yml) { Copy-Item game/bin/placeholders.yml reports/ }
@@ -255,6 +259,10 @@ jobs:
         with:
           path: artifacts
 
+      - name: Fetch the published score history
+        # The first publish has no history yet, so a missing file isn't an error.
+        run: curl -fsSL https://pranavvelu.github.io/detection-validation-pipeline/history.json -o previous-history.json || rm -f previous-history.json
+
       - name: Build the page from this run's results
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -262,6 +270,7 @@ jobs:
         run: >
           python scripts/build_dashboard.py --artifacts artifacts --out site
           --run-url "$RUN_URL" --commit "$COMMIT" --finished "$(date -u '+%-d %b %Y, %H:%M UTC')"
+          --previous-history previous-history.json
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

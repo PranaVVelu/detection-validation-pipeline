@@ -1,0 +1,83 @@
+# What a responder should do when each rule fires. scripts/respond.py turns an alert
+# into a draft incident with this checklist and suggested action.
+#
+# Only disable_license_key can run automatically, and only after a person approves
+# it. A "manual" action is a step for a person, because automating it safely would
+# need systems this project doesn't have.
+playbooks:
+  detections/sigma/proc_creation_win_powershell_encoded_command.yml: &encoded
+    severity: medium
+    checklist:
+      - Decode the base64 command and read what it runs.
+      - Check the parent process and the user account that started PowerShell.
+      - Look for network connections or files created right after it ran.
+    action:
+      type: manual
+      summary: Isolate the machine if the decoded command is malicious.
+  detections/kql/powershell_encoded_command.kql: *encoded
+  detections/sigma/proc_creation_win_powershell_short_encoded_flag.yml: *encoded
+  detections/sigma/proc_creation_win_cmd_env_var_substring_obfuscation.yml:
+    severity: medium
+    checklist:
+      - Expand the environment variable substrings to see the real command.
+      - Check what the parent process was, and whether a script started it.
+    action:
+      type: manual
+      summary: Isolate the machine if the expanded command is malicious.
+  detections/sigma/game/proc_creation_win_game_license_server_hosts_block.yml:
+    severity: medium
+    checklist:
+      - Read the hosts file and list any entries for the license server.
+      - Check which account made the change.
+    action:
+      type: manual
+      summary: Remove the hosts entry and flag the account for a license check.
+  detections/sigma/game/file_change_win_game_license_server_hosts_entry.yml:
+    severity: medium
+    checklist:
+      - Read the new hosts entry and check whether it points the license server elsewhere.
+      - Find which process or script changed the file, since the command line may not show it.
+    action:
+      type: manual
+      summary: Remove the hosts entry and flag the account for a license check.
+  detections/sigma/game/image_load_win_game_system_dll_outside_system_folder.yml:
+    severity: high
+    checklist:
+      - Hash the loaded DLL and compare it with the copy in System32.
+      - Check whether the DLL belongs to an approved mod.
+    action:
+      type: manual
+      summary: Quarantine the DLL if it isn't an approved mod.
+  detections/sigma/game/proc_access_win_game_memory_write_access.yml:
+    severity: high
+    checklist:
+      - Identify the process that requested access, and whether it's signed.
+      - Check whether it's a known overlay or debugger.
+    action:
+      type: manual
+      summary: Flag the session for an anti-cheat review.
+  detections/sigma/game/proc_creation_win_game_unofficial_build.yml:
+    severity: high
+    checklist:
+      - Check whether the hash belongs to a new official build that isn't listed yet.
+      - Compare the file with the official release.
+    action:
+      type: manual
+      summary: Block the build's hash in the launcher if it isn't an official release.
+  detections/sigma/license/license_activation_key_guessing.yml:
+    severity: high
+    checklist:
+      - Check how many players share the address, such as a school or LAN event.
+      - Look for any successful activations from the address after the failures.
+    action:
+      type: manual
+      summary: Rate-limit activations from the address.
+  detections/sigma/license/license_activation_key_sharing.yml:
+    severity: high
+    checklist:
+      - Check whether the machines belong to one player who replaced a PC.
+      - Contact the key's owner before taking action if it might be legitimate.
+    action:
+      type: disable_license_key
+      summary: Disable the shared license key.
+      target: license_key_hash
